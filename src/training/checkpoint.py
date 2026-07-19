@@ -24,7 +24,7 @@ CLASS_NAMES = ["No DR", "Mild", "Moderate", "Severe", "Proliferative DR"]
 
 def save_checkpoint(path: str, model, optimizer, scheduler, epoch: int, global_step: int,
                      config: dict, ema_state_dict: dict | None = None,
-                     best_metric: float | None = None):
+                     best_metric: float | None = None, phase_name: str | None = None):
     """Self-contained checkpoint: includes config + class names for standalone loading."""
     checkpoint = {
         "model_state_dict": model.state_dict(),
@@ -36,6 +36,7 @@ def save_checkpoint(path: str, model, optimizer, scheduler, epoch: int, global_s
         "class_names": CLASS_NAMES,
         "ema_state_dict": ema_state_dict,
         "best_metric": best_metric,
+        "phase_name": phase_name,
     }
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + ".tmp"

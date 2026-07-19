@@ -55,7 +55,7 @@ def build_dataloaders(manifest_train, manifest_val, norm_stats_path, aug_strengt
 
 def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
               checkpoint_dir: str, log_dir: str, run_name: str, global_step: int,
-              ema: ModelEMA, best_qwk: float, global_epoch_idx: list):
+              ema: ModelEMA, best_qwk: float, global_epoch_idx: list, start_epoch: int = 0):
     """global_epoch_idx: single-element list used as a mutable counter shared
     across phase1/phase2/phase3 calls, so the per-epoch CSV log has one
     continuous epoch axis spanning the full training run (for plotting)."""
@@ -103,7 +103,7 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     log_path = os.path.join(log_dir, f"{run_name}_{phase_name}_train_log.csv")
     epoch_log_path = os.path.join(log_dir, f"{run_name}_epoch_log.csv")
 
-    epoch_pbar = tqdm(range(num_epochs), desc=f"[{phase_name}] Epochs", position=0)
+    epoch_pbar = tqdm(range(start_epoch, num_epochs), desc=f"[{phase_name}] Epochs", position=0)
     for epoch in epoch_pbar:
         train_loss, train_acc, global_step = train_one_epoch(
             model, train_loader, optimizer, device, epoch, global_step,
@@ -149,6 +149,7 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         save_checkpoint(
             ckpt_path, model, optimizer, scheduler, epoch, global_step,
             config=run_cfg, ema_state_dict=ema.state_dict(), best_metric=best_qwk,
+            phase_name=phase_name,
         )
         rolling_checkpoint_cleanup(checkpoint_dir, run_name, keep_last_n=3)
 
@@ -158,6 +159,7 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
             save_checkpoint(
                 best_path, model, optimizer, scheduler, epoch, global_step,
                 config=run_cfg, ema_state_dict=ema.state_dict(), best_metric=best_qwk,
+                phase_name=phase_name,
             )
             tqdm.write(f"  -> New best QWK {best_qwk:.4f}, saved to {best_path}")
 
@@ -193,6 +195,9 @@ def main():
     best_qwk = -1.0
     global_epoch_idx = [0]  # mutable counter, shared/incremented across phase calls
 
+    resume_phase = None
+    resume_epoch = 0
+
     if args.resume:
         from src.training.checkpoint import load_checkpoint
         print(f"Resuming weights from {args.resume}...")
@@ -204,14 +209,35 @@ def main():
         best_qwk = ckpt.get("best_metric", -1.0)
         if best_qwk is None:
             best_qwk = -1.0
+            
+        resume_phase = ckpt.get("phase_name")
+        resume_epoch = ckpt.get("epoch", -1) + 1  # start at the NEXT epoch
+        
+        if resume_phase:
+            skipped = 0
+            for p in ["phase1_frozen", "phase2_finetune", "phase3_aptos"]:
+                if p == resume_phase:
+                    skipped += resume_epoch
+                    break
+                if p in config["phases"]:
+                    skipped += config["phases"][p].get("num_epochs", 10)
+            global_epoch_idx[0] = skipped
 
-    for phase_name in ["phase1_frozen", "phase2_finetune", "phase3_aptos"]:
+    phases_to_run = ["phase1_frozen", "phase2_finetune", "phase3_aptos"]
+    if resume_phase in phases_to_run:
+        phases_to_run = phases_to_run[phases_to_run.index(resume_phase):]
+
+    for phase_name in phases_to_run:
         if phase_name not in config["phases"]:
             continue
         phase_cfg = config["phases"][phase_name]
+        
+        start_epoch = resume_epoch if phase_name == resume_phase else 0
+        
         global_step, best_qwk = run_phase(
             model, phase_name, phase_cfg, config, device,
             checkpoint_dir, log_dir, run_name, global_step, ema, best_qwk, global_epoch_idx,
+            start_epoch=start_epoch
         )
 
     print(f"\nTraining complete. Best val QWK: {best_qwk:.4f}")
