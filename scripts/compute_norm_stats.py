@@ -14,38 +14,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import cv2
 import pandas as pd
-
-from src.preprocessing.color_correction import color_correction_pipeline
-from src.preprocessing.crop_and_resize import crop_pad_resize
 from src.preprocessing.normalize import compute_dataset_stats, save_stats
 
-
-def preprocess_and_cache_sample(manifest_csv: str, source_name: str, sample_limit: int = 2000):
-    """
-    Since compute_dataset_stats reads raw files from disk directly (not
-    through DRDataset), and normalization stats must be computed on
-    PREPROCESSED images (post crop/color-correction), we preprocess a
-    sample to a temp cache dir first, then compute stats on that cache.
-    """
+def get_sample_paths(manifest_csv: str, sample_limit: int = 2000):
     df = pd.read_csv(manifest_csv)
     if len(df) > sample_limit:
         df = df.sample(n=sample_limit, random_state=42)
-
-    cache_dir = f"data/processed/_norm_cache_{source_name}"
-    os.makedirs(cache_dir, exist_ok=True)
-
-    cached_paths = []
-    for i, row in df.iterrows():
-        img = cv2.imread(row["image_path"])
-        if img is None:
-            continue
-        img = crop_pad_resize(img)
-        img = color_correction_pipeline(img)
-        out_path = os.path.join(cache_dir, f"{i}.png")
-        cv2.imwrite(out_path, img)
-        cached_paths.append(out_path)
-
-    return cached_paths
+    return df["image_path"].tolist()
 
 
 def main():
@@ -68,8 +43,8 @@ def main():
             continue
 
         print(f"Computing normalization stats for {name}...")
-        cached_paths = preprocess_and_cache_sample(manifest_path, name, args.sample_limit)
-        stats = compute_dataset_stats(cached_paths)
+        sample_paths = get_sample_paths(manifest_path, args.sample_limit)
+        stats = compute_dataset_stats(sample_paths)
         out_path = save_stats(stats, name, "data/processed")
         print(f"  mean={stats['mean']}, std={stats['std']}, n={stats['n_images_sampled']}")
         print(f"  Saved to {out_path}")

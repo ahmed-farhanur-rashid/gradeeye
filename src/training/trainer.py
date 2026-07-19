@@ -37,7 +37,7 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
 
     pbar = tqdm(dataloader, desc=f"Epoch {epoch} [train]")
     for batch_idx, (images, labels) in enumerate(pbar):
-        images = images.to(device, non_blocking=True)
+        images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
 
         images, labels_a, labels_b, lam = maybe_apply_mixup(
@@ -45,7 +45,8 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
         )
 
         optimizer.zero_grad()
-        logits = model(images)
+        with torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", dtype=torch.bfloat16):
+            logits = model(images)
 
         if loss_type == "corn":
             loss_a = corn_loss(logits, labels_a, NUM_CLASSES, per_threshold_weights)
@@ -118,10 +119,11 @@ def validate_one_epoch(model, dataloader: DataLoader, device, epoch: int,
 
     pbar = tqdm(dataloader, desc=f"Epoch {epoch} [val]")
     for images, labels in pbar:
-        images = images.to(device, non_blocking=True)
+        images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
 
-        logits = model(images)
+        with torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", dtype=torch.bfloat16):
+            logits = model(images)
 
         if loss_type == "corn":
             loss = corn_loss(logits, labels, NUM_CLASSES, per_threshold_weights)

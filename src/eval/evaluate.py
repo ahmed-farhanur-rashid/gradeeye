@@ -30,7 +30,7 @@ from src.training.checkpoint import load_checkpoint
 
 def evaluate_checkpoint(checkpoint_path: str, manifest_csv: str, norm_stats_path: str,
                          batch_size: int = 32, device: str | None = None,
-                         use_ema: bool = True) -> dict:
+                         use_ema: bool = True, use_tta: bool = False) -> dict:
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     checkpoint = load_checkpoint(checkpoint_path, map_location=device)
@@ -76,14 +76,19 @@ def evaluate_checkpoint(checkpoint_path: str, manifest_csv: str, norm_stats_path
     with torch.no_grad():
         for images, labels in dataloader:
             images = images.to(device)
-            logits = model(images)
-
-            if output_mode == "corn":
-                preds = corn_predict(logits)
-                probas = corn_predict_probas(logits)
+            if use_tta:
+                from src.eval.tta import tta_forward, tta_predict, tta_predict_probas
+                avg_probas = tta_forward(model, images, output_mode)
+                preds = tta_predict(avg_probas, output_mode)
+                probas = tta_predict_probas(avg_probas, output_mode)
             else:
-                preds = logits.argmax(dim=1)
-                probas = torch.softmax(logits, dim=1)
+                logits = model(images)
+                if output_mode == "corn":
+                    preds = corn_predict(logits)
+                    probas = corn_predict_probas(logits)
+                else:
+                    preds = logits.argmax(dim=1)
+                    probas = torch.softmax(logits, dim=1)
 
             all_preds.append(preds.cpu().numpy())
             all_labels.append(labels.numpy())
@@ -112,11 +117,12 @@ def main():
     parser.add_argument("--norm-stats", required=True)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--no-ema", action="store_true", help="Use raw weights instead of EMA shadow.")
+    parser.add_argument("--tta", action="store_true", help="Enable Test-Time Augmentation")
     args = parser.parse_args()
 
     result = evaluate_checkpoint(
         args.checkpoint, args.manifest, args.norm_stats,
-        batch_size=args.batch_size, use_ema=not args.no_ema,
+        batch_size=args.batch_size, use_ema=not args.no_ema, use_tta=args.tta,
     )
 
     print(f"\nEvaluated {result['n_samples']} samples from {args.manifest}\n")

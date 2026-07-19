@@ -161,6 +161,10 @@ def main():
     config = load_config(args.config)
     run_name = config["run_name"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cuda":
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
     checkpoint_dir = config.get("checkpoint_dir", "saved/checkpoints")
     log_dir = config.get("log_dir", "saved/logs")
@@ -168,6 +172,9 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
 
     model = build_model(config).to(device)
+    if device == "cuda":
+        model = model.to(memory_format=torch.channels_last)
+        model = torch.compile(model, mode="max-autotune")
     ema = ModelEMA(model, decay=config.get("ema_decay", 0.999))
 
     global_step = 0

@@ -16,9 +16,6 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from src.preprocessing.crop_and_resize import crop_pad_resize
-from src.preprocessing.color_correction import color_correction_pipeline
-from src.preprocessing.anisotropic_filter import apply_anisotropic_filter
 from src.preprocessing.normalize import normalize_image
 
 NUM_CLASSES = 5  # 0=No DR, 1=Mild, 2=Moderate, 3=Severe, 4=Proliferative DR
@@ -32,16 +29,13 @@ class DRDataset(Dataset):
     the result to the given torchvision transform for augmentation.
     """
 
-    def __init__(self, csv_path: str, norm_stats: dict, transform=None,
-                 use_anisotropic_filter: bool = False, use_all_channel_clahe: bool = False):
+    def __init__(self, csv_path: str, norm_stats: dict, transform=None):
         self.df = pd.read_csv(csv_path)
         self._validate_labels()
 
         self.norm_mean = norm_stats["mean"]
         self.norm_std = norm_stats["std"]
         self.transform = transform
-        self.use_anisotropic_filter = use_anisotropic_filter
-        self.use_all_channel_clahe = use_all_channel_clahe
 
     def _validate_labels(self):
         labels = self.df["label"].unique()
@@ -63,9 +57,7 @@ class DRDataset(Dataset):
         if img is None:
             raise FileNotFoundError(f"Could not read image: {image_path}")
 
-        img = crop_pad_resize(img)
-        img = color_correction_pipeline(img, use_all_channel_clahe=self.use_all_channel_clahe)
-        img = apply_anisotropic_filter(img, enabled=self.use_anisotropic_filter)
+
         img = normalize_image(img, self.norm_mean, self.norm_std)
 
         # normalize_image returns float32 HWC in BGR-normalized space;
