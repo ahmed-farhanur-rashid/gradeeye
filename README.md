@@ -29,21 +29,25 @@ python scripts/download_datasets.py --dataset all
 # 2. Build manifests + stratified splits (validates 5-class again)
 python scripts/build_manifests.py --dataset all
 
-# 3. Compute per-source normalization stats (on preprocessed images)
+# 3. One-shot image preprocessing (border crops, CLAHE, etc.)
+python scripts/preprocess_all.py
+
+# 4. Compute per-source normalization stats (on preprocessed images)
 python scripts/compute_norm_stats.py --dataset all
 
-# 4. Train (pick a run config — see configs/)
+# 5. Train (pick a run config — see configs/)
 python scripts/train.py --config configs/full_method.yaml
 python scripts/train.py --config configs/baseline.yaml
 python scripts/train.py --config configs/ablation_ce_weighted_cbam.yaml
 
-# 5. Evaluate a checkpoint on any split
+# 6. Evaluate a checkpoint on any split (use --tta for Test-Time Augmentation)
 python src/eval/evaluate.py \
     --checkpoint saved/checkpoints/full_method_best.pt \
     --manifest data/splits/aptos_test.csv \
-    --norm-stats data/processed/aptos_norm_stats.json
+    --norm-stats data/processed/aptos_norm_stats.json \
+    --tta
 
-# 6. Generate all conference-paper figures + LaTeX tables in one shot
+# 7. Generate all conference-paper figures + LaTeX tables in one shot
 #    (confusion matrices, ROC curves, training curves, run-comparison
 #    bar chart + table, per-class metrics tables), across the 3 run
 #    configs at once:
@@ -63,23 +67,43 @@ Outputs land in `paper_assets/figures/` (PNG + PDF) and `paper_assets/tables/`
 
 ## Structure
 
-```
-configs/            Run configs (baseline / ablation / full_method)
-data/raw/            Downloaded raw datasets (eyepacs/aptos/messidor2)
-data/processed/      Manifests + per-source normalization stats
-data/splits/         Stratified train/val/test CSVs per source
-src/preprocessing/   Border crop, color correction, anisotropic filter, normalize
-src/augmentation/    Train/eval transforms, MixUp
-src/models/          ConvNeXt-Tiny backbone, CBAM, projection head, CORN layer
-src/losses/          CORN loss, per-threshold class weighting, CE baseline
-src/data/            Dataset classes, stratified splitting
-src/training/        Trainer, optimizer/scheduler, checkpointing, EMA
-src/eval/            Metrics (QWK primary), evaluate.py, figures.py, latex_tables.py
-scripts/             CLI entry points for each pipeline stage
-scripts/generate_paper_assets.py   All figures + LaTeX tables in one run
-saved/checkpoints/   Model checkpoints (self-contained: config + class names embedded)
-saved/logs/          Per-run training CSV logs (per-batch AND per-epoch)
-paper_assets/        Generated figures (PNG+PDF) and LaTeX tables
+```text
+gradeeye/
+│
+├── README.md
+├── requirements.txt
+│
+├── configs/                       # Run configs (baseline / ablation / full_method)
+│
+├── data/
+│   ├── raw/                       # Downloaded raw datasets (eyepacs/aptos/messidor2)
+│   ├── processed/                 # Precomputed image caches, manifests, and norm stats
+│   └── splits/                    # Stratified train/val/test CSVs per source
+│
+├── notebooks/                     # Jupyter notebooks (e.g., colab_runner.ipynb)
+│
+├── paper_assets/                  # Generated figures (PNG+PDF) and LaTeX tables
+│
+├── saved/
+│   ├── checkpoints/               # Model checkpoints (self-contained)
+│   └── logs/                      # Per-run training CSV logs (per-batch AND per-epoch)
+│
+├── scripts/
+│   ├── build_manifests.py
+│   ├── compute_norm_stats.py
+│   ├── download_datasets.py
+│   ├── generate_paper_assets.py   # All figures + LaTeX tables in one run
+│   ├── preprocess_all.py
+│   └── train.py                   # CLI entry points for pipeline stages
+│
+└── src/
+    ├── augmentation/              # Train/eval transforms, MixUp
+    ├── data/                      # Dataset classes, stratified splitting
+    ├── eval/                      # Metrics (QWK primary), evaluate.py, tta.py, figures.py, latex_tables.py
+    ├── losses/                    # CORN loss, per-threshold class weighting, CE baseline
+    ├── models/                    # ConvNeXt-Tiny backbone, CBAM, projection head, CORN layer
+    ├── preprocessing/             # Border crop, color correction, anisotropic filter, normalize
+    └── training/                  # Trainer, optimizer/scheduler, checkpointing, EMA
 ```
 
 ## Key design decisions (see plan for full rationale)
