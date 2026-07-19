@@ -1,0 +1,133 @@
+# ==============================================================================
+#  PYTHON CORE
+# ==============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ==============================================================================
+#  ENVIRONMENTS & DEPENDENCIES
+# ==============================================================================
+.env
+.venv
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==============================================================================
+#  DATA SCIENCE & MACHINE LEARNING
+# ==============================================================================
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Data & Datasets (ignoring large file formats)
+processed/
+splits/
+!data/.gitkeep
+*.csv
+*.tsv
+*.dat
+*.hdf5
+*.h5
+*.parquet
+*.pq
+*.db
+*.sqlite
+*.sqlite3
+*.npz
+*.npy
+*.pkl
+*.feather
+*.arrow
+
+# Models & Checkpoints
+saved/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.weights
+*.safetensors
+*.onnx
+*.pb
+
+# Logs & Telemetry
+logs/
+*.log
+runs/
+wandb/
+tensorboard/
+mlruns/
+lightning_logs/
+tb_logs/
+
+# ==============================================================================
+#  TESTING, LINTING & COVERAGE
+# ==============================================================================
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
+#  IDEs, EDITORS & CONFIGS
+# ==============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
+.vscode-test/
+no_upload/
+
+# ==============================================================================
+#  OS GENERATED FILES
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,58 @@
+# Baseline run: plain CE, no ordinal structure, no class weighting, no CBAM.
+# Isolates how much the full method's gains come from architecture vs.
+# just using a strong pretrained backbone.
+
+run_name: "baseline"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "ce"
+use_class_weighting: false
+use_mixup: false
+
+model:
+  pretrained: true
+  use_cbam: false
+  num_thresholds: 4        # build_model() derives output_mode="softmax" from
+                            # loss_type="ce" above, so the head actually
+                            # outputs num_thresholds+1=5 raw logits (standard
+                            # 5-way softmax), not the 4-value CORN shape.
+  head_hidden_dim: 512
+  dropout: 0.3
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    norm_stats: "data/processed/eyepacs_norm_stats.json"
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 64
+    num_epochs: 5
+    head_lr: 0.001
+    scheduler: "cosine"
+
+  phase2_finetune:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    norm_stats: "data/processed/eyepacs_norm_stats.json"
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 32
+    num_epochs: 10
+    head_lr: 0.0001
+    backbone_lr: 0.00001
+    scheduler: "cosine"
+
+  phase3_aptos:
+    manifest_train: "data/splits/aptos_train.csv"
+    manifest_val: "data/splits/aptos_val.csv"
+    norm_stats: "data/processed/aptos_norm_stats.json"
+    freeze_backbone: false
+    aug_strength: "heavy"
+    batch_size: 32
+    num_epochs: 15
+    head_lr: 0.00005
+    backbone_lr: 0.000005
+    scheduler: "plateau"

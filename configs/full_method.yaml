@@ -1,0 +1,61 @@
+# Full method: CORN ordinal loss + CBAM (last 2 stages) + per-threshold
+# class weighting + MixUp. This is the primary configuration the whole
+# plan is built around.
+
+run_name: "full_method"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "corn"
+use_class_weighting: true
+use_mixup: true
+
+model:
+  pretrained: true
+  use_cbam: true
+  cbam_num_stages: 2
+  num_thresholds: 4
+  head_hidden_dim: 512
+  dropout: 0.3
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    norm_stats: "data/processed/eyepacs_norm_stats.json"
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 64
+    num_epochs: 5
+    head_lr: 0.001
+    scheduler: "cosine"
+
+  phase2_finetune:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    norm_stats: "data/processed/eyepacs_norm_stats.json"
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 32
+    num_epochs: 10
+    head_lr: 0.0001
+    backbone_lr: 0.00001
+    scheduler: "cosine"
+
+  phase3_aptos:
+    manifest_train: "data/splits/aptos_train.csv"
+    manifest_val: "data/splits/aptos_val.csv"
+    norm_stats: "data/processed/aptos_norm_stats.json"
+    freeze_backbone: false
+    aug_strength: "heavy"
+    batch_size: 32
+    num_epochs: 15
+    head_lr: 0.00005
+    backbone_lr: 0.000005
+    scheduler: "plateau"
+
+# Ablation candidate, NOT run by default (plan Section 2/5): anisotropic
+# diffusion filter on/off toggle. Enable manually as a single extra run on
+# this full configuration only, if time remains after the 3 core runs.
+# use_anisotropic_filter: false  # wire into DRDataset construction if used

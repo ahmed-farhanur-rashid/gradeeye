@@ -1,0 +1,14 @@
+torch>=2.1          # for torch.compile support
+torchvision
+timm                 # ConvNeXt-Tiny ImageNet weights
+opencv-python        # CLAHE, border crop, circular mask
+scikit-learn         # StratifiedShuffleSplit, metrics
+numpy
+pandas
+tqdm
+pyyaml               # config loading
+matplotlib          # figures for paper (loss curves, confusion matrix, ROC)
+seaborn             # confusion matrix heatmap styling
+kaggle               # dataset downloads (EyePACS, APTOS)
+requests
+Pillow
