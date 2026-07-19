@@ -83,35 +83,12 @@ def download_dataset(name: str):
             if res.returncode != 0:
                 raise RuntimeError(f"Failed to download {fname}")
                 
-        # 2. Reconstruct binary split zips (train.zip.001, train.zip.002, etc.)
-        master_zip = os.path.join(spec["target_dir"], "train.zip")
-        if not os.path.exists(master_zip):
-            print(f"[{name}] Reconstructing split zip files (this will take a while)...")
-            concat_cmd = f"cat {spec['target_dir']}/train.zip.* > {master_zip}"
-            subprocess.run(concat_cmd, shell=True, check=True)
-        else:
-            print(f"[{name}] Master train.zip already exists, skipping reconstruction.")
-            
-        print(f"[{name}] Extracting master train.zip (warnings about extra bytes are normal)...")
-        # Exit code 1 is expected (unzip throws a warning due to concatenation headers)
-        res = subprocess.run(f"unzip -q -o {master_zip} -d {spec['target_dir']}", shell=True)
-        if res.returncode not in [0, 1]:
-            print(f"[{name}] Warning: unzip returned unexpected code {res.returncode}")
-        
-        print(f"[{name}] Extracting trainLabels.csv.zip...")
-        subprocess.run(f"unzip -q -o {spec['target_dir']}/trainLabels.csv.zip -d {spec['target_dir']}", shell=True)
-
     elif name == "messidor2":
         print(f"[{name}] Downloading labels CSV (google-brain/messidor2-dr-grades)...")
         subprocess.run(["kaggle", "datasets", "download", "-d", "google-brain/messidor2-dr-grades", "-p", spec["target_dir"]], check=True)
         
         print(f"[{name}] Downloading images (xyaustin/messidor2)...")
         subprocess.run(["kaggle", "datasets", "download", "-d", "xyaustin/messidor2", "-p", spec["target_dir"]], check=True)
-        
-        print(f"[{name}] Extracting Messidor-2 files...")
-        subprocess.run(f"unzip -q -o {spec['target_dir']}/messidor2-dr-grades.zip -d {spec['target_dir']}", shell=True)
-        subprocess.run(f"unzip -q -o {spec['target_dir']}/messidor2.zip -d {spec['target_dir']}", shell=True)
-
     else:
         if spec["is_competition"]:
             cmd = ["kaggle", "competitions", "download", "-c", comp_name, "-p", spec["target_dir"]]
@@ -126,14 +103,7 @@ def download_dataset(name: str):
                 f"or rules not accepted."
             )
 
-        for fname in os.listdir(spec["target_dir"]):
-            if fname.endswith(".zip"):
-                zpath = os.path.join(spec["target_dir"], fname)
-                print(f"Extracting {zpath}...")
-                with zipfile.ZipFile(zpath) as zf:
-                    zf.extractall(spec["target_dir"])
-
-    print(f"Downloaded and extracted {name} to {spec['target_dir']}")
+    print(f"Downloaded {name} to {spec['target_dir']}")
 
 
 def validate_labels_csv(labels_csv_path: str, label_col: str, dataset_name: str) -> bool:
