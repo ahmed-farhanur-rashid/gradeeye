@@ -60,7 +60,10 @@ class DRGradingModel(nn.Module):
         return logits
 
     def freeze_backbone(self):
-        """For Phase 1: frozen-backbone, head-only training."""
+        """
+        For Phase 1: frozen-backbone, head-only training. 
+        Note: We intentionally never freeze self.head here because Phase 1 is designed to train the head.
+        """
         for param in self.backbone.parameters():
             param.requires_grad = False
         if self.use_cbam:

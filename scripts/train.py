@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import yaml
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from src.augmentation.transforms import build_eval_transforms, build_train_transforms
 from src.data.datasets import DRDataset
@@ -102,7 +103,8 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     log_path = os.path.join(log_dir, f"{run_name}_{phase_name}_train_log.csv")
     epoch_log_path = os.path.join(log_dir, f"{run_name}_epoch_log.csv")
 
-    for epoch in range(num_epochs):
+    epoch_pbar = tqdm(range(num_epochs), desc=f"[{phase_name}] Epochs", position=0)
+    for epoch in epoch_pbar:
         train_loss, train_acc, global_step = train_one_epoch(
             model, train_loader, optimizer, device, epoch, global_step,
             loss_type=loss_type, per_threshold_weights=per_threshold_weights,
@@ -117,8 +119,8 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         )
         val_qwk = quadratic_weighted_kappa(val_labels.numpy(), val_preds.numpy())
 
-        print(f"[{phase_name}] Epoch {epoch}: train_loss={train_loss:.4f} train_acc={train_acc:.4f} "
-              f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} val_qwk={val_qwk:.4f}")
+        tqdm.write(f"[{phase_name}] Epoch {epoch}: train_loss={train_loss:.4f} train_acc={train_acc:.4f} "
+                   f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} val_qwk={val_qwk:.4f}")
 
         # Per-epoch log spanning ALL phases in one file (global_epoch_idx keeps
         # a continuous x-axis for plotting the full training curve across
@@ -141,6 +143,15 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         else:
             scheduler.step()
 
+        # Save checkpoint at the end of every epoch
+        from src.training.checkpoint import rolling_checkpoint_cleanup
+        ckpt_path = os.path.join(checkpoint_dir, f"{run_name}_step{global_step}.pt")
+        save_checkpoint(
+            ckpt_path, model, optimizer, scheduler, epoch, global_step,
+            config=run_cfg, ema_state_dict=ema.state_dict(), best_metric=best_qwk,
+        )
+        rolling_checkpoint_cleanup(checkpoint_dir, run_name, keep_last_n=3)
+
         if val_qwk > best_qwk:
             best_qwk = val_qwk
             best_path = os.path.join(checkpoint_dir, f"{run_name}_best.pt")
@@ -148,7 +159,7 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
                 best_path, model, optimizer, scheduler, epoch, global_step,
                 config=run_cfg, ema_state_dict=ema.state_dict(), best_metric=best_qwk,
             )
-            print(f"  -> New best QWK {best_qwk:.4f}, saved to {best_path}")
+            tqdm.write(f"  -> New best QWK {best_qwk:.4f}, saved to {best_path}")
 
     return global_step, best_qwk
 
@@ -156,6 +167,7 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
 def main():
     parser = argparse.ArgumentParser(description="Train DR grading model per run config.")
     parser.add_argument("--config", required=True, help="Path to run config YAML.")
+    parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from.")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -180,6 +192,18 @@ def main():
     global_step = 0
     best_qwk = -1.0
     global_epoch_idx = [0]  # mutable counter, shared/incremented across phase calls
+
+    if args.resume:
+        from src.training.checkpoint import load_checkpoint
+        print(f"Resuming weights from {args.resume}...")
+        ckpt = load_checkpoint(args.resume, map_location=device)
+        model.load_state_dict(ckpt["model_state_dict"])
+        if ema and ckpt.get("ema_state_dict"):
+            ema.load_state_dict(ckpt["ema_state_dict"])
+        global_step = ckpt.get("global_step", 0)
+        best_qwk = ckpt.get("best_metric", -1.0)
+        if best_qwk is None:
+            best_qwk = -1.0
 
     for phase_name in ["phase1_frozen", "phase2_finetune", "phase3_aptos"]:
         if phase_name not in config["phases"]:

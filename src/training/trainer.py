@@ -35,7 +35,7 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
     running_correct = 0
     running_total = 0
 
-    pbar = tqdm(dataloader, desc=f"Epoch {epoch} [train]")
+    pbar = tqdm(dataloader, desc=f"Epoch {epoch} [train]", leave=False)
     for batch_idx, (images, labels) in enumerate(pbar):
         images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
@@ -94,13 +94,6 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
                 fieldnames=["epoch", "step", "batch_loss", "running_acc", "timestamp"],
             )
 
-        if checkpoint_dir is not None and global_step % checkpoint_every_n_steps == 0:
-            ckpt_path = f"{checkpoint_dir}/{run_name}_step{global_step}.pt"
-            save_checkpoint(
-                ckpt_path, model, optimizer, None, epoch, global_step,
-                config={}, ema_state_dict=ema.state_dict() if ema else None,
-            )
-            rolling_checkpoint_cleanup(checkpoint_dir, run_name, keep_last_n=3)
 
     epoch_loss = running_loss / max(running_total, 1)
     epoch_acc = running_correct / max(running_total, 1)
@@ -117,7 +110,7 @@ def validate_one_epoch(model, dataloader: DataLoader, device, epoch: int,
     all_preds = []
     all_labels = []
 
-    pbar = tqdm(dataloader, desc=f"Epoch {epoch} [val]")
+    pbar = tqdm(dataloader, desc=f"Epoch {epoch} [val]", leave=False)
     for images, labels in pbar:
         images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
