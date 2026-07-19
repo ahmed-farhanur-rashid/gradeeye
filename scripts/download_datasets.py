@@ -58,32 +58,64 @@ def download_dataset(name: str):
 
     spec = DATASET_SPECS[name]
     os.makedirs(spec["target_dir"], exist_ok=True)
+    
+    comp_name = spec["kaggle_ref"].split("/")[-1]
 
-    if spec["is_competition"]:
-        cmd = ["kaggle", "competitions", "download", "-c", spec["kaggle_ref"].split("/")[-1],
-               "-p", spec["target_dir"]]
+    if name == "eyepacs":
+        # 1. Fetch only the train files to save 50GB of Drive space
+        print(f"[{name}] Fetching file list to isolate train set...")
+        list_cmd = ["kaggle", "competitions", "files", "-c", comp_name, "--csv"]
+        list_res = subprocess.run(list_cmd, capture_output=True, text=True)
+        if list_res.returncode != 0:
+            raise RuntimeError(f"Failed to list files for eyepacs: {list_res.stderr}")
+            
+        import csv
+        lines = list_res.stdout.strip().split('\n')
+        reader = csv.DictReader(lines)
+        
+        train_files = [row['name'] for row in reader if 'train' in row['name'].lower()]
+        print(f"[{name}] Found {len(train_files)} train-related files. Downloading sequentially...")
+        
+        for fname in train_files:
+            print(f"[{name}] Downloading {fname}...")
+            cmd = ["kaggle", "competitions", "download", "-c", comp_name, "-f", fname, "-p", spec["target_dir"]]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                raise RuntimeError(f"Failed to download {fname}: {res.stderr}")
+                
+        # 2. Reconstruct split zips (train.zip.001, train.zip.002, etc.)
+        print(f"[{name}] Reconstructing split zip files...")
+        concat_cmd = f"cat {spec['target_dir']}/train.zip.* > {spec['target_dir']}/train.zip"
+        subprocess.run(concat_cmd, shell=True, check=True)
+        
+        print(f"[{name}] Extracting master train.zip...")
+        subprocess.run(f"unzip -q -o {spec['target_dir']}/train.zip -d {spec['target_dir']}", shell=True, check=True)
+        
+        print(f"[{name}] Extracting trainLabels.csv.zip...")
+        subprocess.run(f"unzip -q -o {spec['target_dir']}/trainLabels.csv.zip -d {spec['target_dir']}", shell=True, check=True)
+
     else:
-        cmd = ["kaggle", "datasets", "download", "-d", spec["kaggle_ref"],
-               "-p", spec["target_dir"]]
+        if spec["is_competition"]:
+            cmd = ["kaggle", "competitions", "download", "-c", comp_name, "-p", spec["target_dir"]]
+        else:
+            cmd = ["kaggle", "datasets", "download", "-d", spec["kaggle_ref"], "-p", spec["target_dir"]]
 
-    print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"STDOUT: {result.stdout}")
-        print(f"STDERR: {result.stderr}")
-        raise RuntimeError(
-            f"Kaggle download failed for {name}. Common cause: missing/expired "
-            f"~/.kaggle/kaggle.json credentials, or competition rules not yet "
-            f"accepted on the Kaggle website (competitions require clicking "
-            f"'I Understand and Accept' before API download works)."
-        )
+        print(f"Running: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"STDOUT: {result.stdout}")
+            print(f"STDERR: {result.stderr}")
+            raise RuntimeError(
+                f"Kaggle download failed for {name}. Common cause: missing/expired credentials "
+                f"or rules not accepted."
+            )
 
-    for fname in os.listdir(spec["target_dir"]):
-        if fname.endswith(".zip"):
-            zpath = os.path.join(spec["target_dir"], fname)
-            print(f"Extracting {zpath}...")
-            with zipfile.ZipFile(zpath) as zf:
-                zf.extractall(spec["target_dir"])
+        for fname in os.listdir(spec["target_dir"]):
+            if fname.endswith(".zip"):
+                zpath = os.path.join(spec["target_dir"], fname)
+                print(f"Extracting {zpath}...")
+                with zipfile.ZipFile(zpath) as zf:
+                    zf.extractall(spec["target_dir"])
 
     print(f"Downloaded and extracted {name} to {spec['target_dir']}")
 
