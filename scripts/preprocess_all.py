@@ -21,14 +21,17 @@ def preprocess_dataset(manifest_path: str, source_name: str, use_anisotropic: bo
     out_dir = f"data/processed/{source_name}"
     os.makedirs(out_dir, exist_ok=True)
     
-    new_paths = []
-    print(f"Preprocessing {source_name}...")
-    for i, row in tqdm(df.iterrows(), total=len(df)):
+    import concurrent.futures
+    import multiprocessing
+    
+    print(f"Preprocessing {source_name} (Parallel with {multiprocessing.cpu_count()} cores)...")
+    
+    def _process_row(idx_row):
+        idx, row = idx_row
         raw_path = row["image_path"]
         img = cv2.imread(raw_path)
         if img is None:
-            new_paths.append(raw_path)
-            continue
+            return idx, raw_path
             
         img = crop_pad_resize(img)
         img = color_correction_pipeline(img, use_all_channel_clahe=use_all_channel_clahe)
@@ -40,7 +43,16 @@ def preprocess_dataset(manifest_path: str, source_name: str, use_anisotropic: bo
             
         out_path = os.path.join(out_dir, filename)
         cv2.imwrite(out_path, img)
-        new_paths.append(out_path)
+        return idx, out_path
+
+    # Keep paths in exactly the same order as the dataframe
+    new_paths = [None] * len(df)
+    
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(tqdm(executor.map(_process_row, df.iterrows()), total=len(df)))
+        
+    for idx, path in results:
+        new_paths[idx] = path
         
     df["image_path"] = new_paths
     df.to_csv(manifest_path, index=False)

@@ -79,9 +79,9 @@ def download_dataset(name: str):
         for fname in train_files:
             print(f"[{name}] Downloading {fname}...")
             cmd = ["kaggle", "competitions", "download", "-c", comp_name, "-f", fname, "-p", spec["target_dir"]]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd)
             if res.returncode != 0:
-                raise RuntimeError(f"Failed to download {fname}: {res.stderr}")
+                raise RuntimeError(f"Failed to download {fname}")
                 
         # 2. Reconstruct binary split zips (train.zip.001, train.zip.002, etc.)
         master_zip = os.path.join(spec["target_dir"], "train.zip")
@@ -119,10 +119,8 @@ def download_dataset(name: str):
             cmd = ["kaggle", "datasets", "download", "-d", spec["kaggle_ref"], "-p", spec["target_dir"]]
 
         print(f"Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"STDOUT: {result.stdout}")
-            print(f"STDERR: {result.stderr}")
+        res = subprocess.run(cmd)
+        if res.returncode != 0:
             raise RuntimeError(
                 f"Kaggle download failed for {name}. Common cause: missing/expired credentials "
                 f"or rules not accepted."

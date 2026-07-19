@@ -50,6 +50,7 @@ pip-delete-this-directory.txt
 
 # Data & Datasets (ignoring large file formats)
 processed/
+raw/
 splits/
 !data/.gitkeep
 *.csv
