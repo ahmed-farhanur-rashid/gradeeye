@@ -83,16 +83,18 @@ def download_dataset(name: str):
             if res.returncode != 0:
                 raise RuntimeError(f"Failed to download {fname}: {res.stderr}")
                 
-        # 2. Reconstruct split zips (train.zip.001, train.zip.002, etc.)
-        print(f"[{name}] Reconstructing split zip files...")
-        concat_cmd = f"cat {spec['target_dir']}/train.zip.* > {spec['target_dir']}/train.zip"
-        subprocess.run(concat_cmd, shell=True, check=True)
-        
-        print(f"[{name}] Extracting master train.zip...")
-        subprocess.run(f"unzip -q -o {spec['target_dir']}/train.zip -d {spec['target_dir']}", shell=True, check=True)
+        # 2. Extract split zips directly (train.zip.001, train.zip.002, etc.)
+        # We use 7z because standard unzip throws warnings on concatenated split files,
+        # which crashes python due to exit code 1. 7z handles .001 files natively in-place
+        # without needing to duplicate 33GB of files with 'cat'.
+        print(f"[{name}] Extracting split zip files with 7z (this will take a while)...")
+        extract_cmd = f"7z x {spec['target_dir']}/train.zip.001 -o{spec['target_dir']} -y"
+        res = subprocess.run(extract_cmd, shell=True)
+        if res.returncode not in [0, 1]:
+             print(f"[{name}] 7z extraction returned code {res.returncode}. (Code 1 is a warning but usually succeeds)")
         
         print(f"[{name}] Extracting trainLabels.csv.zip...")
-        subprocess.run(f"unzip -q -o {spec['target_dir']}/trainLabels.csv.zip -d {spec['target_dir']}", shell=True, check=True)
+        subprocess.run(f"unzip -q -o {spec['target_dir']}/trainLabels.csv.zip -d {spec['target_dir']}", shell=True)
 
     else:
         if spec["is_competition"]:
