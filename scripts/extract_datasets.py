@@ -58,14 +58,19 @@ def extract_aptos(target_dir: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Extract downloaded datasets safely")
+    parser.add_argument("--dataset", choices=["eyepacs", "aptos", "messidor2", "all"], default="all", help="Which dataset to extract")
     args = parser.parse_args()
 
-    # Extract all
-    extract_eyepacs("data/raw/eyepacs")
-    extract_aptos("data/raw/aptos")
-    extract_messidor2("data/raw/messidor2")
+    targets = ["eyepacs", "aptos", "messidor2"] if args.dataset == "all" else [args.dataset]
+
+    if "eyepacs" in targets:
+        extract_eyepacs("data/raw/eyepacs")
+    if "aptos" in targets:
+        extract_aptos("data/raw/aptos")
+    if "messidor2" in targets:
+        extract_messidor2("data/raw/messidor2")
     
-    print("All datasets successfully extracted.")
+    print("Requested datasets successfully extracted.")
 
 if __name__ == "__main__":
     main()
