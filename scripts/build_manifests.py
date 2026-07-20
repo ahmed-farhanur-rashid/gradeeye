@@ -134,17 +134,8 @@ def main():
     for name in targets:
         manifests[name] = builders[name]()
 
-    if manifests.get("eyepacs"):
-        # EyePACS is pretrain-only (plan Section 1) — no held-out test split
-        # needed here, final test happens on APTOS. train_val_split handles
-        # the 2-way case directly rather than routing through the 3-way
-        # stratified_split with a dummy test_frac.
-        from src.data.stratified_split import train_val_split
-        train_val_split(manifests["eyepacs"], "eyepacs", "data/splits", train_frac=0.85)
-    if manifests.get("aptos"):
-        stratified_split(manifests["aptos"], "aptos", "data/splits")
-    if manifests.get("messidor2"):
-        eval_only_split(manifests["messidor2"], "messidor2", "data/splits")
+    # Splits are now built separately via scripts/build_splits.py AFTER
+    # scripts/preprocess_all.py updates the manifests to point to the processed images.
 
 
 if __name__ == "__main__":

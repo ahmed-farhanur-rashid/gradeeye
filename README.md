@@ -29,16 +29,19 @@ python scripts/download_datasets.py --dataset all
 # 2. Extract datasets
 python scripts/extract_datasets.py --dataset all
 
-# 3. Build manifests + stratified splits (validates 5-class again)
+# 3. Build RAW manifests
 python scripts/build_manifests.py --dataset all
 
 # 4. One-shot image preprocessing (border crops, CLAHE, etc.)
 python scripts/preprocess_all.py
 
-# 5. Compute per-source normalization stats (on preprocessed images)
+# 5. Build splits from PROCESSED manifests
+python scripts/build_splits.py --dataset all
+
+# 6. Compute per-source normalization stats (on preprocessed images)
 python scripts/compute_norm_stats.py --dataset all
 
-# 6. Train (pick a run config — see configs/)
+# 7. Train (pick a run config — see configs/)
 python scripts/train.py --config configs/full_method.yaml
 python scripts/train.py --config configs/baseline.yaml
 python scripts/train.py --config configs/ablation_ce_weighted_cbam.yaml
