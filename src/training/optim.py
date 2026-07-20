@@ -57,11 +57,16 @@ def build_optimizer(model, phase: str, head_lr: float = 1e-3, backbone_lr: float
     Weight-decay exemption per plan Section 6: bias, BatchNorm, and
     LayerNorm parameters get weight_decay=0.0 in every phase.
     """
-    # Classify each parameter by its owning module
-    head_named = [(n, p) for n, p in model.named_parameters() if n.startswith("head.")]
-    cbam_named = [(n, p) for n, p in model.named_parameters() if n.startswith("cbam")]
+    # Classify each parameter by its owning module.
+    # torch.compile wraps param names with '_orig_mod.' prefix — strip it
+    # so that module-based grouping (head. / cbam / backbone.) still works.
+    def _strip(name: str) -> str:
+        return name.removeprefix("_orig_mod.")
+
+    head_named = [(n, p) for n, p in model.named_parameters() if _strip(n).startswith("head.")]
+    cbam_named = [(n, p) for n, p in model.named_parameters() if _strip(n).startswith("cbam")]
     backbone_named = [(n, p) for n, p in model.named_parameters()
-                      if not n.startswith("head.") and not n.startswith("cbam")]
+                      if not _strip(n).startswith("head.") and not _strip(n).startswith("cbam")]
 
     if phase == "phase1_frozen":
         # Backbone/CBAM are frozen (requires_grad=False). Only optimize head.
