@@ -21,18 +21,49 @@ NUM_CLASSES = 5
 
 def build_eyepacs_manifest():
     """
-    EyePACS ships trainLabels.csv with columns: image, level (0-4).
-    Images are typically .jpeg.
+    EyePACS: merge train (trainLabels.csv) and test (retinopathy_solution.csv)
+    into one unified manifest. The test solution CSV provides labels for all
+    53,576 test images, nearly tripling the dataset from 35k to ~88k.
     """
     raw_dir = "data/raw/eyepacs"
-    labels_csv = os.path.join(raw_dir, "trainLabels.csv")
-    if not os.path.exists(labels_csv):
-        print(f"Skipping EyePACS: {labels_csv} not found (run download_datasets.py first).")
+    train_labels = os.path.join(raw_dir, "trainLabels.csv")
+    test_labels = "data/temp/retinopathy_solution.csv"
+
+    dfs = []
+
+    # ── Train partition ──
+    if os.path.exists(train_labels):
+        df_train = pd.read_csv(train_labels)
+        df_train["image_path"] = df_train["image"].apply(
+            lambda x: os.path.join(raw_dir, "train", f"{x}.jpeg")
+        )
+        df_train = df_train[["image_path", "level"]].rename(columns={"level": "label"})
+        print(f"  EyePACS train: {len(df_train)} images")
+        dfs.append(df_train)
+    else:
+        print(f"  Warning: {train_labels} not found, skipping train partition")
+
+    # ── Test partition ──
+    if os.path.exists(test_labels) and os.path.isdir(os.path.join(raw_dir, "test")):
+        df_test = pd.read_csv(test_labels)
+        # retinopathy_solution.csv has columns: image, level, Usage
+        df_test["image_path"] = df_test["image"].apply(
+            lambda x: os.path.join(raw_dir, "test", f"{x}.jpeg")
+        )
+        df_test = df_test[["image_path", "level"]].rename(columns={"level": "label"})
+        print(f"  EyePACS test:  {len(df_test)} images")
+        dfs.append(df_test)
+    else:
+        if not os.path.exists(test_labels):
+            print(f"  Note: {test_labels} not found, skipping test partition")
+        elif not os.path.isdir(os.path.join(raw_dir, "test")):
+            print(f"  Note: {raw_dir}/test/ directory not found — download test images first")
+
+    if not dfs:
+        print("Skipping EyePACS: no label files found")
         return None
 
-    df = pd.read_csv(labels_csv)
-    df["image_path"] = df["image"].apply(lambda x: os.path.join(raw_dir, "train", f"{x}.jpeg"))
-    out_df = df[["image_path", "level"]].rename(columns={"level": "label"})
+    out_df = pd.concat(dfs, ignore_index=True)
 
     found = set(out_df["label"].unique())
     if found != set(range(NUM_CLASSES)):
@@ -41,7 +72,7 @@ def build_eyepacs_manifest():
     os.makedirs("data/processed", exist_ok=True)
     out_path = "data/processed/eyepacs_manifest.csv"
     out_df.to_csv(out_path, index=False)
-    print(f"EyePACS manifest: {len(out_df)} images -> {out_path}")
+    print(f"EyePACS manifest: {len(out_df)} images total -> {out_path}")
     return out_path
 
 

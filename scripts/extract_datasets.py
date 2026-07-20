@@ -4,43 +4,63 @@ import subprocess
 import zipfile
 
 def extract_eyepacs(target_dir: str):
+    # ── Train set ──
     master_zip = os.path.join(target_dir, "train.zip")
     
     # 1. Stream unwrapped binary chunks into master zip to save space
     if not os.path.exists(master_zip) and not os.path.exists(os.path.join(target_dir, "train")):
-        print(f"[eyepacs] Streaming raw chunks directly into master zip (Requires 35GB temporary space)...")
-        with open(master_zip, 'wb') as fout:
-            for i in range(1, 6):
-                wrapper = os.path.join(target_dir, f"train.zip.00{i}.zip")
-                if not os.path.exists(wrapper):
-                    print(f"Warning: Missing wrapper {wrapper}")
-                    continue
-                    
-                print(f"[eyepacs] Unwrapping and streaming {wrapper}...")
-                with zipfile.ZipFile(wrapper) as zf:
-                    # Kaggle wraps "train.zip.001" inside "train.zip.001.zip"
-                    with zf.open(f"train.zip.00{i}") as fin:
-                        while True:
-                            chunk = fin.read(1024 * 1024 * 16) # 16MB chunks
-                            if not chunk: break
-                            fout.write(chunk)
-                            
-                # Delete the wrapper immediately to free up 7GB!
-                os.remove(wrapper)
-        print("[eyepacs] Wrappers deleted! Freed up space.")
+        wrapper_chunks = sorted([f for f in os.listdir(target_dir) if f.startswith("train.zip.") and f.endswith(".zip")])
+        if wrapper_chunks:
+            print(f"[eyepacs] Streaming {len(wrapper_chunks)} train chunks into master zip...")
+            with open(master_zip, 'wb') as fout:
+                for wrapper_name in wrapper_chunks:
+                    wrapper = os.path.join(target_dir, wrapper_name)
+                    inner_name = wrapper_name.removesuffix(".zip")  # e.g. "train.zip.001"
+                    print(f"[eyepacs] Unwrapping and streaming {wrapper_name}...")
+                    with zipfile.ZipFile(wrapper) as zf:
+                        with zf.open(inner_name) as fin:
+                            while True:
+                                chunk = fin.read(1024 * 1024 * 16)  # 16MB chunks
+                                if not chunk: break
+                                fout.write(chunk)
+                    os.remove(wrapper)
+            print("[eyepacs] Train wrappers deleted.")
     
-    # 2. Extract final images
+    # 2. Extract final train images
     if os.path.exists(master_zip):
-        print("[eyepacs] Extracting master train.zip (this will take a while)...")
-        # unzip throws a warning (exit code 1) for large zips, ignore it
+        print("[eyepacs] Extracting master train.zip...")
         subprocess.run(f"unzip -q -o {master_zip} -d {target_dir}", shell=True)
-        print("[eyepacs] Cleaning up master zip...")
         os.remove(master_zip)
         
     labels_zip = os.path.join(target_dir, "trainLabels.csv.zip")
     if os.path.exists(labels_zip):
-        print(f"[eyepacs] Extracting {labels_zip}...")
         subprocess.run(f"unzip -q -o {labels_zip} -d {target_dir}", shell=True)
+
+    # ── Test set ──
+    test_master_zip = os.path.join(target_dir, "test.zip")
+    
+    if not os.path.exists(test_master_zip) and not os.path.exists(os.path.join(target_dir, "test")):
+        test_chunks = sorted([f for f in os.listdir(target_dir) if f.startswith("test.zip.") and f.endswith(".zip")])
+        if test_chunks:
+            print(f"[eyepacs] Streaming {len(test_chunks)} test chunks into master zip...")
+            with open(test_master_zip, 'wb') as fout:
+                for wrapper_name in test_chunks:
+                    wrapper = os.path.join(target_dir, wrapper_name)
+                    inner_name = wrapper_name.removesuffix(".zip")
+                    print(f"[eyepacs] Unwrapping and streaming {wrapper_name}...")
+                    with zipfile.ZipFile(wrapper) as zf:
+                        with zf.open(inner_name) as fin:
+                            while True:
+                                chunk = fin.read(1024 * 1024 * 16)
+                                if not chunk: break
+                                fout.write(chunk)
+                    os.remove(wrapper)
+            print("[eyepacs] Test wrappers deleted.")
+    
+    if os.path.exists(test_master_zip):
+        print("[eyepacs] Extracting master test.zip...")
+        subprocess.run(f"unzip -q -o {test_master_zip} -d {target_dir}", shell=True)
+        os.remove(test_master_zip)
 
 def extract_messidor2(target_dir: str):
     for zname in ["messidor2-dr-grades.zip", "messidor2.zip"]:

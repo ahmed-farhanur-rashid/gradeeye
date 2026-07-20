@@ -52,7 +52,7 @@ DATASET_SPECS = {
 }
 
 
-def download_dataset(name: str):
+def download_dataset(name: str, include_test: bool = False, include_test_only: bool = False):
     if name not in DATASET_SPECS:
         raise ValueError(f"Unknown dataset {name!r}. Choices: {list(DATASET_SPECS)}")
 
@@ -62,8 +62,8 @@ def download_dataset(name: str):
     comp_name = spec["kaggle_ref"].split("/")[-1]
 
     if name == "eyepacs":
-        # 1. Fetch only the train files to save 50GB of Drive space
-        print(f"[{name}] Fetching file list to isolate train set...")
+        # Fetch file list and download train, test, or both
+        print(f"[{name}] Fetching file list...")
         list_cmd = ["kaggle", "competitions", "files", "-c", comp_name, "--csv"]
         list_res = subprocess.run(list_cmd, capture_output=True, text=True)
         if list_res.returncode != 0:
@@ -72,11 +72,20 @@ def download_dataset(name: str):
         import csv
         lines = list_res.stdout.strip().split('\n')
         reader = csv.DictReader(lines)
+        all_files = [row['name'] for row in reader]
         
-        train_files = [row['name'] for row in reader if 'train' in row['name'].lower()]
-        print(f"[{name}] Found {len(train_files)} train-related files. Downloading sequentially...")
+        # Determine which subsets to download
+        if include_test_only:
+            target_files = [f for f in all_files if 'test' in f.lower() and 'sample' not in f.lower()]
+            print(f"[{name}] Downloading TEST set only ({len(target_files)} files)...")
+        elif include_test:
+            target_files = [f for f in all_files if ('train' in f.lower() or 'test' in f.lower()) and 'sample' not in f.lower()]
+            print(f"[{name}] Downloading TRAIN + TEST sets ({len(target_files)} files)...")
+        else:
+            target_files = [f for f in all_files if 'train' in f.lower()]
+            print(f"[{name}] Downloading TRAIN set only ({len(target_files)} files)...")
         
-        for fname in train_files:
+        for fname in target_files:
             print(f"[{name}] Downloading {fname}...")
             cmd = ["kaggle", "competitions", "download", "-c", comp_name, "-f", fname, "-p", spec["target_dir"]]
             res = subprocess.run(cmd)
@@ -135,11 +144,15 @@ def validate_labels_csv(labels_csv_path: str, label_col: str, dataset_name: str)
 def main():
     parser = argparse.ArgumentParser(description="Download and validate DR datasets.")
     parser.add_argument("--dataset", choices=list(DATASET_SPECS) + ["all"], default="all")
+    parser.add_argument("--eyepacs-test", action="store_true",
+                        help="Download EyePACS test set images (53GB). "
+                             "Requires retinopathy_solution.csv for labels.")
     args = parser.parse_args()
 
     targets = list(DATASET_SPECS) if args.dataset == "all" else [args.dataset]
     for name in targets:
-        download_dataset(name)
+        include_test = args.eyepacs_test if name == "eyepacs" else False
+        download_dataset(name, include_test=include_test)
 
     print(
         "\nDownload complete. Labels CSVs vary in filename/column per source "
