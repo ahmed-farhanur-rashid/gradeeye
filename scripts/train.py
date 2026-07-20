@@ -222,7 +222,7 @@ def main():
         
         if resume_phase:
             skipped = 0
-            for p in ["phase1_frozen", "phase2_finetune", "phase3_aptos"]:
+            for p in ["phase1_frozen", "phase2_full_training", "phase3_aptos"]:
                 if p == resume_phase:
                     skipped += resume_epoch
                     break
@@ -230,7 +230,7 @@ def main():
                     skipped += config["phases"][p].get("num_epochs", 10)
             global_epoch_idx[0] = skipped
 
-    phases_to_run = ["phase1_frozen", "phase2_finetune", "phase3_aptos"]
+    phases_to_run = ["phase1_frozen", "phase2_full_training", "phase3_aptos"]
     if resume_phase in phases_to_run:
         phases_to_run = phases_to_run[phases_to_run.index(resume_phase):]
 
