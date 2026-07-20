@@ -44,7 +44,14 @@ class ModelEMA:
         for key, shadow_val in self.shadow.items():
             model_val = model_state[key]
             if shadow_val.dtype.is_floating_point:
-                shadow_val.mul_(d).add_(model_val.detach(), alpha=1 - d)
+                # BN running_mean/running_var are moment statistics, NOT
+                # learnable parameters. EMA-blending them produces garbage
+                # normalization (caused 15k+ val loss on EfficientNetV2-S
+                # which has 222 BN buffers vs ConvNeXt's 4). Copy them.
+                if "running_mean" in key or "running_var" in key:
+                    shadow_val.copy_(model_val)
+                else:
+                    shadow_val.mul_(d).add_(model_val.detach(), alpha=1 - d)
             else:
                 # non-float buffers (e.g. BatchNorm num_batches_tracked) — just copy
                 shadow_val.copy_(model_val)

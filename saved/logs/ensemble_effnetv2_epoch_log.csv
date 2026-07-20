@@ -1,0 +1,2 @@
+phase,phase_epoch,global_epoch_idx,train_loss,train_acc,val_loss,val_acc,val_qwk,lr
+phase1_frozen,0,0,0.645282743301818,0.5378874491869918,15141.522445648307,0.4221463136920011,-0.027763769952861006,0.001

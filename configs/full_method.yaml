@@ -17,7 +17,7 @@ model:
   cbam_num_stages: 2
   num_thresholds: 4
   head_hidden_dim: 512
-  dropout: 0.3
+  dropout: 0.4
 
 phases:
   phase1_frozen:
@@ -42,6 +42,7 @@ phases:
     num_epochs: 35
     head_lr: 0.0001
     backbone_lr: 0.00001
+    weight_decay: 0.01
     warmup_epochs: 2
     scheduler: "cosine"
 

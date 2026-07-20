@@ -134,6 +134,12 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     is_plateau = isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
     step_scheduler = None if is_plateau else scheduler
 
+    # Early stopping: stop if val QWK hasn't improved for `patience` epochs.
+    # Prevents the severe overfitting observed in Phase 2 where train/val
+    # loss gap grew to 0.43 while QWK degraded for the last 14 of 35 epochs.
+    early_stop_patience = phase_cfg.get("early_stop_patience", 7)
+    epochs_without_improvement = 0
+
     # ── Phase banner ──
     ui.print_phase_start(phase_name, phase_idx, total_phases,
                          num_epochs, batch_size, freeze or freeze_backbone_only)
@@ -166,6 +172,9 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         is_new_best = val_qwk > best_qwk
         if is_new_best:
             best_qwk = val_qwk
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
 
         current_lr = optimizer.param_groups[0]["lr"]
         best_path = os.path.join(checkpoint_dir, f"{run_name}_best.pt") if is_new_best else None
@@ -184,7 +193,7 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
              "val_loss": val_loss, "val_acc": val_acc, "val_qwk": val_qwk,
              "lr": current_lr},
             fieldnames=["phase", "phase_epoch", "global_epoch_idx", "train_loss", "train_acc",
-                        "val_loss", "val_acc", "val_qwk", "lr"],
+                         "val_loss", "val_acc", "val_qwk", "lr"],
         )
         global_epoch_idx[0] += 1
 
@@ -207,6 +216,24 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
                 config=run_cfg, ema_state_dict=ema.state_dict(), best_metric=best_qwk,
                 phase_name=phase_name,
             )
+
+        # ── Early stopping ──
+        if epochs_without_improvement >= early_stop_patience:
+            ui.log(
+                f"Early stopping: val QWK hasn't improved for "
+                f"{early_stop_patience} epochs (best={best_qwk:.4f}). "
+                f"Restoring best checkpoint.",
+                style="bold yellow",
+            )
+            # Restore best model weights so next phase starts from peak
+            best_ckpt_path = os.path.join(checkpoint_dir, f"{run_name}_best.pt")
+            if os.path.exists(best_ckpt_path):
+                from src.training.checkpoint import load_checkpoint
+                best_ckpt = load_checkpoint(best_ckpt_path, map_location=str(device))
+                model.load_state_dict(best_ckpt["model_state_dict"])
+                if ema is not None and best_ckpt.get("ema_state_dict"):
+                    ema.load_state_dict(best_ckpt["ema_state_dict"])
+            break
 
     return global_step, best_qwk
 
