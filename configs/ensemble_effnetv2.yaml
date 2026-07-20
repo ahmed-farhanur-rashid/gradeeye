@@ -1,0 +1,59 @@
+# Ensemble member B: EfficientNetV2-S backbone with CORN + CBAM.
+# Trained through the identical 3-phase pipeline as full_method.yaml,
+# same data splits, same norm-stats — only the backbone differs.
+# Produces a separate checkpoint namespace (ensemble_effnetv2_best.pt).
+
+run_name: "ensemble_effnetv2"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "corn"
+use_class_weighting: true
+use_mixup: true
+
+model:
+  arch: "efficientnetv2_s"
+  pretrained: true
+  use_cbam: true
+  cbam_num_stages: 2
+  num_thresholds: 4
+  head_hidden_dim: 512
+  dropout: 0.3
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    norm_stats: "data/processed/eyepacs_norm_stats.json"
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 128       # EfficientNetV2-S uses more VRAM than ConvNeXt-Tiny
+    num_epochs: 5
+    head_lr: 0.001
+    warmup_epochs: 1
+    scheduler: "cosine"
+
+  phase2_full_training:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    norm_stats: "data/processed/eyepacs_norm_stats.json"
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 24         # tighter VRAM with EfficientNetV2-S unfrozen
+    num_epochs: 15
+    head_lr: 0.0001
+    backbone_lr: 0.00001
+    warmup_epochs: 1
+    scheduler: "cosine"
+
+  phase3_aptos:
+    manifest_train: "data/splits/aptos_train.csv"
+    manifest_val: "data/splits/aptos_val.csv"
+    norm_stats: "data/processed/aptos_norm_stats.json"
+    freeze_backbone_only: true
+    aug_strength: "heavy"
+    batch_size: 32
+    num_epochs: 10
+    head_lr: 0.0001
+    scheduler: "plateau"

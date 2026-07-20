@@ -1,29 +1,25 @@
 """
-ConvNeXt-Tiny backbone, ImageNet-pretrained via timm.
+Backbone feature extractors via timm.
 
-LOCKED per plan Section 4 / handoff note 1 — do not substitute
-ResNet/EfficientNet/ViT. This was a deliberate literature-benchmarking
-choice: DeiT/EfficientNet-class transformers underperform slightly on
-APTOS at this data scale, and architecture swaps alone show diminishing
-returns past VGG-era models on this dataset. The novelty lives in the
-CBAM + CORN combination, not the backbone.
+Supports ConvNeXt-Tiny (primary, plan Section 4) and EfficientNetV2-S
+(ensemble member, plan_extension Section 2).
+
+All backbones expose the same contract:
+  - .out_channels: list[int]  (shallow → deep)
+  - forward(x) → list[Tensor]  (per-stage feature maps, shallow → deep)
 """
 import timm
 import torch.nn as nn
 
 
-class ConvNeXtTinyBackbone(nn.Module):
-    """
-    Feature extractor wrapper. Exposes intermediate stage feature maps
-    (needed for CBAM insertion into the last 1-2 stages) as well as the
-    final pooled feature vector.
-    """
+class TimmBackbone(nn.Module):
+    """Generic timm features_only wrapper. Exposes per-stage feature maps
+    for CBAM insertion and reports channel counts for downstream modules."""
 
-    def __init__(self, pretrained: bool = True):
+    def __init__(self, arch: str, pretrained: bool = True):
         super().__init__()
-        # features_only=True gives access to per-stage feature maps for CBAM insertion.
         self.model = timm.create_model(
-            "convnext_tiny",
+            arch,
             pretrained=pretrained,
             features_only=True,
         )
@@ -35,5 +31,18 @@ class ConvNeXtTinyBackbone(nn.Module):
         return self.model(x)
 
 
-def build_backbone(pretrained: bool = True) -> ConvNeXtTinyBackbone:
-    return ConvNeXtTinyBackbone(pretrained=pretrained)
+# Supported architectures — add new timm model names here.
+_SUPPORTED_ARCHS = {
+    "convnext_tiny": "convnext_tiny",
+    "efficientnetv2_s": "tf_efficientnetv2_s",
+}
+
+
+def build_backbone(pretrained: bool = True, arch: str = "convnext_tiny") -> TimmBackbone:
+    timm_name = _SUPPORTED_ARCHS.get(arch)
+    if timm_name is None:
+        raise ValueError(
+            f"Unknown backbone arch: {arch!r}. "
+            f"Supported: {list(_SUPPORTED_ARCHS.keys())}"
+        )
+    return TimmBackbone(timm_name, pretrained=pretrained)

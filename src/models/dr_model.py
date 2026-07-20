@@ -14,15 +14,16 @@ class DRGradingModel(nn.Module):
     def __init__(self, pretrained: bool = True, use_cbam: bool = True,
                  cbam_num_stages: int = 2, num_thresholds: int = 4,
                  head_hidden_dim: int = 512, dropout: float = 0.3,
-                 output_mode: str = "corn"):
+                 output_mode: str = "corn", arch: str = "convnext_tiny"):
         """
+        arch: backbone architecture name (see backbone.py _SUPPORTED_ARCHS).
         use_cbam: toggle for the baseline run (plan Section 5 run matrix —
                   baseline has attention=None).
         cbam_num_stages: how many of the LAST backbone stages get CBAM
                          inserted (default 2, per plan Section 4).
         """
         super().__init__()
-        self.backbone = build_backbone(pretrained=pretrained)
+        self.backbone = build_backbone(pretrained=pretrained, arch=arch)
         num_stages = len(self.backbone.out_channels)
         cbam_num_stages = min(cbam_num_stages, num_stages)
 
@@ -107,4 +108,5 @@ def build_model(config: dict) -> DRGradingModel:
         head_hidden_dim=model_cfg.get("head_hidden_dim", 512),
         dropout=model_cfg.get("dropout", 0.3),
         output_mode=output_mode,
+        arch=model_cfg.get("arch", "convnext_tiny"),
     )
