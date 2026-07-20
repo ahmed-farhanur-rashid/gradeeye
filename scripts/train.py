@@ -20,6 +20,11 @@ import torch
 import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import cv2
+
+# CRITICAL FIX for DataLoader deadlock on Linux: prevent OpenCV from spawning
+# its own threads inside the PyTorch multiprocessing workers!
+cv2.setNumThreads(0)
 
 from src.augmentation.transforms import build_eval_transforms, build_train_transforms
 from src.data.datasets import DRDataset
@@ -47,9 +52,9 @@ def build_dataloaders(manifest_train, manifest_val, norm_stats_path, aug_strengt
     val_ds = DRDataset(manifest_val, norm_stats, transform=build_eval_transforms())
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                               num_workers=4, pin_memory=True, drop_last=True)
+                               num_workers=0, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
-                             num_workers=2, pin_memory=True)
+                             num_workers=0, pin_memory=True)
     return train_loader, val_loader, train_ds
 
 
