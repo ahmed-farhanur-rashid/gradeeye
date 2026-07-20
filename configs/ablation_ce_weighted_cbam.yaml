@@ -30,6 +30,7 @@ phases:
     batch_size: 64
     num_epochs: 5
     head_lr: 0.001
+    warmup_epochs: 1
     scheduler: "cosine"
 
   phase2_finetune:

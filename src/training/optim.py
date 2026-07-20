@@ -6,40 +6,77 @@ schedule:
   Phase 1: frozen backbone, head-only training (high LR on head).
   Phase 2: full unfreeze, low uniform LR (or gentle layer-wise decay).
   Phase 3: APTOS fine-tune, very low LR, heavier augmentation.
+
+Weight-decay exemption (plan Section 6): weight_decay applied only to
+Convolution and Linear weights.  weight_decay = 0.0 for all Biases,
+BatchNorm, and LayerNorm parameters — standard practice, prevents
+unnecessary regularization pressure on normalization/bias terms.
 """
 import torch
+
+# Keywords in parameter names that indicate bias/norm params
+# (should be exempt from weight decay).
+_NO_DECAY_KEYWORDS = ("bias", ".bn", "norm", "_bn")
+
+
+def _split_decay_groups(params_with_names, lr, weight_decay):
+    """Split named parameters into weight-decay and no-decay groups.
+
+    Returns a list of param-group dicts (may contain 0-2 groups depending
+    on whether decay/no-decay params exist).
+    """
+    decay_params = []
+    no_decay_params = []
+
+    for name, param in params_with_names:
+        if not param.requires_grad:
+            continue
+        if any(nd in name.lower() for nd in _NO_DECAY_KEYWORDS):
+            no_decay_params.append(param)
+        else:
+            decay_params.append(param)
+
+    groups = []
+    if decay_params:
+        groups.append({"params": decay_params, "lr": lr, "weight_decay": weight_decay})
+    if no_decay_params:
+        groups.append({"params": no_decay_params, "lr": lr, "weight_decay": 0.0})
+    return groups
 
 
 def build_optimizer(model, phase: str, head_lr: float = 1e-3, backbone_lr: float = 1e-5,
                      weight_decay: float = 1e-4) -> torch.optim.Optimizer:
     """
-    phase: "phase1_frozen", "phase2_finetune", "phase3_aptos".
+    phase: "phase1_frozen", "phase2_full_training", "phase3_aptos", etc.
 
     Phase 1: only head params have requires_grad=True (backbone frozen via
              model.freeze_backbone()), so param groups collapse naturally.
     Phase 2/3: full model unfrozen — head keeps head_lr, backbone gets the
                (lower) backbone_lr.
+
+    Weight-decay exemption per plan Section 6: bias, BatchNorm, and
+    LayerNorm parameters get weight_decay=0.0 in every phase.
     """
-    head_params = list(model.head.parameters())
-    if model.use_cbam:
-        cbam_params = list(model.cbam_modules.parameters())
-    else:
-        cbam_params = []
-    backbone_params = list(model.backbone.parameters())
+    # Classify each parameter by its owning module
+    head_named = [(n, p) for n, p in model.named_parameters() if n.startswith("head.")]
+    cbam_named = [(n, p) for n, p in model.named_parameters() if n.startswith("cbam")]
+    backbone_named = [(n, p) for n, p in model.named_parameters()
+                      if not n.startswith("head.") and not n.startswith("cbam")]
 
     if phase == "phase1_frozen":
-        # Backbone/CBAM are frozen (requires_grad=False), so we can safely
-        # include them in a param group at LR 0 without affecting training —
-        # but simplest is to just optimize head params only.
-        param_groups = [{"params": head_params, "lr": head_lr}]
+        # Backbone/CBAM are frozen (requires_grad=False). Only optimize head.
+        param_groups = _split_decay_groups(head_named, head_lr, weight_decay)
     else:
-        param_groups = [
-            {"params": head_params, "lr": head_lr},
-            {"params": cbam_params, "lr": head_lr * 0.5},  # CBAM: between head and backbone LR
-            {"params": backbone_params, "lr": backbone_lr},
-        ]
+        param_groups = (
+            _split_decay_groups(head_named, head_lr, weight_decay)
+            + _split_decay_groups(cbam_named, head_lr * 0.5, weight_decay)
+            + _split_decay_groups(backbone_named, backbone_lr, weight_decay)
+        )
 
-    return torch.optim.AdamW(param_groups, weight_decay=weight_decay)
+    # Safety: filter out empty groups (e.g. no CBAM params in baseline config)
+    param_groups = [g for g in param_groups if len(g["params"]) > 0]
+
+    return torch.optim.AdamW(param_groups)
 
 
 def build_scheduler(optimizer, num_training_steps: int, num_warmup_steps: int = 0,
@@ -48,6 +85,11 @@ def build_scheduler(optimizer, num_training_steps: int, num_warmup_steps: int = 
     scheduler_type: "cosine" (cosine annealing with optional linear warmup)
                     or "plateau" (ReduceLROnPlateau, useful for phase 3
                     fine-tune where step-count planning is less reliable).
+
+    IMPORTANT: For cosine/warmup, the returned scheduler must be stepped
+    PER BATCH (inside train_one_epoch), not per epoch.  T_max equals the
+    total number of optimizer steps across the phase.  For plateau, it is
+    stepped per epoch in run_phase() with val_loss.
     """
     if scheduler_type == "plateau":
         return torch.optim.lr_scheduler.ReduceLROnPlateau(

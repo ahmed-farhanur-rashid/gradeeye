@@ -21,7 +21,6 @@ import logging
 logging.getLogger("torch._inductor.utils").setLevel(logging.ERROR)
 import yaml
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 import cv2
 
 # CRITICAL FIX for DataLoader deadlock on Linux: prevent OpenCV from spawning
@@ -37,8 +36,10 @@ from src.training.checkpoint import DivergenceGuard, append_csv_log, save_checkp
 from src.training.ema import ModelEMA
 from src.training.optim import build_optimizer, build_scheduler
 from src.training.trainer import train_one_epoch, validate_one_epoch
+from src.training import progress as ui
 
 NUM_CLASSES = 5
+NUM_DATALOADER_WORKERS = min(4, os.cpu_count() or 1)
 
 
 def load_config(path: str) -> dict:
@@ -54,18 +55,19 @@ def build_dataloaders(manifest_train, manifest_val, norm_stats_path, aug_strengt
     val_ds = DRDataset(manifest_val, norm_stats, transform=build_eval_transforms())
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                               num_workers=0, pin_memory=True, drop_last=True)
+                               num_workers=NUM_DATALOADER_WORKERS,
+                               pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
-                             num_workers=0, pin_memory=True)
+                             num_workers=NUM_DATALOADER_WORKERS,
+                             pin_memory=True)
     return train_loader, val_loader, train_ds
 
 
 def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
               checkpoint_dir: str, log_dir: str, run_name: str, global_step: int,
-              ema: ModelEMA, best_qwk: float, global_epoch_idx: list, start_epoch: int = 0):
-    """global_epoch_idx: single-element list used as a mutable counter shared
-    across phase1/phase2/phase3 calls, so the per-epoch CSV log has one
-    continuous epoch axis spanning the full training run (for plotting)."""
+              ema: ModelEMA, best_qwk: float, global_epoch_idx: list,
+              phase_idx: int, total_phases: int, start_epoch: int = 0):
+    """Run a single training phase (frozen-head, full-finetune, or APTOS)."""
     from src.eval.metrics import quadratic_weighted_kappa
 
     manifest_train = phase_cfg["manifest_train"]
@@ -79,10 +81,15 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         manifest_train, manifest_val, norm_stats_path, aug_strength, batch_size
     )
 
-    if phase_cfg.get("freeze_backbone", False):
+    freeze = phase_cfg.get("freeze_backbone", False)
+    if freeze:
         model.freeze_backbone()
     else:
         model.unfreeze_backbone()
+
+    # Reset EMA at each phase transition so shadow weights start fresh.
+    if ema is not None:
+        ema.reset(model)
 
     optimizer = build_optimizer(
         model, phase=phase_name,
@@ -91,7 +98,12 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         weight_decay=phase_cfg.get("weight_decay", 1e-4),
     )
     total_steps = num_epochs * len(train_loader)
-    scheduler = build_scheduler(optimizer, total_steps, scheduler_type=phase_cfg.get("scheduler", "cosine"))
+    warmup_epochs = phase_cfg.get("warmup_epochs", 0)
+    warmup_steps = warmup_epochs * len(train_loader)
+
+    scheduler = build_scheduler(optimizer, total_steps,
+                                num_warmup_steps=warmup_steps,
+                                scheduler_type=phase_cfg.get("scheduler", "cosine"))
 
     loss_type = run_cfg.get("loss_type", "corn")
     use_class_weighting = run_cfg.get("use_class_weighting", False)
@@ -110,14 +122,21 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     log_path = os.path.join(log_dir, f"{run_name}_{phase_name}_train_log.csv")
     epoch_log_path = os.path.join(log_dir, f"{run_name}_epoch_log.csv")
 
-    epoch_pbar = tqdm(range(start_epoch, num_epochs), desc=f"[{phase_name}] Epochs", position=0)
-    for epoch in epoch_pbar:
+    is_plateau = isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+    step_scheduler = None if is_plateau else scheduler
+
+    # ── Phase banner ──
+    ui.print_phase_start(phase_name, phase_idx, total_phases,
+                         num_epochs, batch_size, freeze)
+
+    for epoch in range(start_epoch, num_epochs):
         train_loss, train_acc, global_step = train_one_epoch(
             model, train_loader, optimizer, device, epoch, global_step,
             loss_type=loss_type, per_threshold_weights=per_threshold_weights,
             class_weights=ce_class_weights, mixup_enabled=mixup_enabled,
             ema=ema, divergence_guard=divergence_guard, log_path=log_path,
             checkpoint_dir=checkpoint_dir, run_name=run_name,
+            scheduler=step_scheduler,
         )
 
         train_state = None
@@ -134,14 +153,21 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         if train_state is not None:
             model.load_state_dict(train_state)
 
-        tqdm.write(f"[{phase_name}] Epoch {epoch}: train_loss={train_loss:.4f} train_acc={train_acc:.4f} "
-                   f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} val_qwk={val_qwk:.4f}")
+        # ── Epoch summary ──
+        is_new_best = val_qwk > best_qwk
+        if is_new_best:
+            best_qwk = val_qwk
 
-        # Per-epoch log spanning ALL phases in one file (global_epoch_idx keeps
-        # a continuous x-axis for plotting the full training curve across
-        # phase1 -> phase2 -> phase3, since plot_training_curves.py reads
-        # this single file per run).
         current_lr = optimizer.param_groups[0]["lr"]
+        best_path = os.path.join(checkpoint_dir, f"{run_name}_best.pt") if is_new_best else None
+
+        ui.print_epoch_summary(
+            epoch, num_epochs, train_loss, train_acc,
+            val_loss, val_acc, val_qwk, current_lr,
+            best_qwk, is_new_best, best_path,
+        )
+
+        # ── CSV log ──
         append_csv_log(
             epoch_log_path,
             {"phase": phase_name, "phase_epoch": epoch, "global_epoch_idx": global_epoch_idx[0],
@@ -153,12 +179,10 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         )
         global_epoch_idx[0] += 1
 
-        if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+        if is_plateau:
             scheduler.step(val_loss)
-        else:
-            scheduler.step()
 
-        # Save checkpoint at the end of every epoch
+        # ── Checkpoint ──
         from src.training.checkpoint import rolling_checkpoint_cleanup
         ckpt_path = os.path.join(checkpoint_dir, f"{run_name}_step{global_step}.pt")
         save_checkpoint(
@@ -168,17 +192,26 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         )
         rolling_checkpoint_cleanup(checkpoint_dir, run_name, keep_last_n=3)
 
-        if val_qwk > best_qwk:
-            best_qwk = val_qwk
-            best_path = os.path.join(checkpoint_dir, f"{run_name}_best.pt")
+        if is_new_best:
             save_checkpoint(
                 best_path, model, optimizer, scheduler, epoch, global_step,
                 config=run_cfg, ema_state_dict=ema.state_dict(), best_metric=best_qwk,
                 phase_name=phase_name,
             )
-            tqdm.write(f"  -> New best QWK {best_qwk:.4f}, saved to {best_path}")
 
     return global_step, best_qwk
+
+
+def _discover_phase_names(config: dict) -> list[str]:
+    """Return the ordered list of phase names present in this config."""
+    phases = config.get("phases", {})
+    ordered = []
+    for prefix in ("phase1", "phase2", "phase3"):
+        for key in phases:
+            if key.startswith(prefix):
+                ordered.append(key)
+                break
+    return ordered
 
 
 def main():
@@ -200,6 +233,9 @@ def main():
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
 
+    # ── Header ──
+    ui.print_header(run_name, device, config.get("loss_type", "corn"))
+
     model = build_model(config).to(device)
     if device == "cuda":
         model = model.to(memory_format=torch.channels_last)
@@ -208,14 +244,14 @@ def main():
 
     global_step = 0
     best_qwk = -1.0
-    global_epoch_idx = [0]  # mutable counter, shared/incremented across phase calls
+    global_epoch_idx = [0]
 
     resume_phase = None
     resume_epoch = 0
 
     if args.resume:
         from src.training.checkpoint import load_checkpoint
-        print(f"Resuming weights from {args.resume}...")
+        ui.log(f"Resuming from {args.resume}...", style="bold yellow")
         ckpt = load_checkpoint(args.resume, map_location=device)
         model.load_state_dict(ckpt["model_state_dict"])
         if ema and ckpt.get("ema_state_dict"):
@@ -224,38 +260,37 @@ def main():
         best_qwk = ckpt.get("best_metric", -1.0)
         if best_qwk is None:
             best_qwk = -1.0
-            
         resume_phase = ckpt.get("phase_name")
-        resume_epoch = ckpt.get("epoch", -1) + 1  # start at the NEXT epoch
-        
-        if resume_phase:
-            skipped = 0
-            for p in ["phase1_frozen", "phase2_full_training", "phase3_aptos"]:
-                if p == resume_phase:
-                    skipped += resume_epoch
-                    break
-                if p in config["phases"]:
-                    skipped += config["phases"][p].get("num_epochs", 10)
-            global_epoch_idx[0] = skipped
+        resume_epoch = ckpt.get("epoch", -1) + 1
 
-    phases_to_run = ["phase1_frozen", "phase2_full_training", "phase3_aptos"]
+    phases_to_run = _discover_phase_names(config)
+    total_phases = len(phases_to_run)
+
     if resume_phase in phases_to_run:
         phases_to_run = phases_to_run[phases_to_run.index(resume_phase):]
+        skipped = 0
+        for p in _discover_phase_names(config):
+            if p == resume_phase:
+                skipped += resume_epoch
+                break
+            if p in config["phases"]:
+                skipped += config["phases"][p].get("num_epochs", 10)
+        global_epoch_idx[0] = skipped
 
-    for phase_name in phases_to_run:
+    for i, phase_name in enumerate(phases_to_run, start=total_phases - len(phases_to_run) + 1):
         if phase_name not in config["phases"]:
             continue
         phase_cfg = config["phases"][phase_name]
-        
         start_epoch = resume_epoch if phase_name == resume_phase else 0
-        
+
         global_step, best_qwk = run_phase(
             model, phase_name, phase_cfg, config, device,
-            checkpoint_dir, log_dir, run_name, global_step, ema, best_qwk, global_epoch_idx,
-            start_epoch=start_epoch
+            checkpoint_dir, log_dir, run_name, global_step, ema, best_qwk,
+            global_epoch_idx, phase_idx=i, total_phases=total_phases,
+            start_epoch=start_epoch,
         )
 
-    print(f"\nTraining complete. Best val QWK: {best_qwk:.4f}")
+    ui.print_training_complete(best_qwk, run_name)
 
 
 if __name__ == "__main__":
