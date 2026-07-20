@@ -56,6 +56,7 @@ def evaluate_checkpoint(checkpoint_path: str, manifest_csv: str, norm_stats_path
         head_hidden_dim=model_cfg.get("head_hidden_dim", 512),
         dropout=model_cfg.get("dropout", 0.3),
         output_mode=output_mode,
+        arch=model_cfg.get("arch", "convnext_tiny"),
     )
 
     # torch.compile wraps param names with '_orig_mod.' prefix during training.

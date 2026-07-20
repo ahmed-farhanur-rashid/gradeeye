@@ -42,21 +42,63 @@ python scripts/build_splits.py --dataset all
 python scripts/compute_norm_stats.py --dataset all
 
 # 7. Train (pick a run config — see configs/)
+# Note: To retrain a model from scratch, first clear its checkpoints/logs:
+# rm -rf saved/checkpoints/full_method* saved/logs/full_method*
 python scripts/train.py --config configs/full_method.yaml
 python scripts/train.py --config configs/baseline.yaml
 python scripts/train.py --config configs/ablation_ce_weighted_cbam.yaml
+python scripts/train.py --config configs/ensemble_effnetv2.yaml
 
-# 7. Evaluate a checkpoint on any split (use --tta for Test-Time Augmentation)
+# 8. Evaluate a single model checkpoint on any split (use --tta for Test-Time Augmentation)
+# Evaluate ConvNeXt-Tiny (full_method) on APTOS test:
 python src/eval/evaluate.py \
     --checkpoint saved/checkpoints/full_method_best.pt \
     --manifest data/splits/aptos_test.csv \
     --norm-stats data/processed/aptos_norm_stats.json \
     --tta
 
-# 8. Generate all conference-paper figures + LaTeX tables in one shot
-#    (confusion matrices, ROC curves, training curves, run-comparison
-#    bar chart + table, per-class metrics tables), across the 3 run
-#    configs at once:
+# Evaluate ConvNeXt-Tiny (full_method) on Messidor-2 (external validation):
+python src/eval/evaluate.py \
+    --checkpoint saved/checkpoints/full_method_best.pt \
+    --manifest data/splits/messidor2_test.csv \
+    --norm-stats data/processed/messidor2_norm_stats.json \
+    --tta
+
+# Evaluate EfficientNetV2-S (ensemble partner) on APTOS test:
+python src/eval/evaluate.py \
+    --checkpoint saved/checkpoints/ensemble_effnetv2_best.pt \
+    --manifest data/splits/aptos_test.csv \
+    --norm-stats data/processed/aptos_norm_stats.json \
+    --tta
+
+# Evaluate EfficientNetV2-S (ensemble partner) on Messidor-2 (external validation):
+python src/eval/evaluate.py \
+    --checkpoint saved/checkpoints/ensemble_effnetv2_best.pt \
+    --manifest data/splits/messidor2_test.csv \
+    --norm-stats data/processed/messidor2_norm_stats.json \
+    --tta
+
+# 9. Ensemble evaluation (the paper's headline number — average probabilities across models)
+# APTOS test:
+python scripts/ensemble_evaluate.py \
+    --checkpoints saved/checkpoints/full_method_best.pt \
+                  saved/checkpoints/ensemble_effnetv2_best.pt \
+    --manifest data/splits/aptos_test.csv \
+    --norm-stats data/processed/aptos_norm_stats.json \
+    --tta
+
+# Messidor-2 (external validation):
+python scripts/ensemble_evaluate.py \
+    --checkpoints saved/checkpoints/full_method_best.pt \
+                  saved/checkpoints/ensemble_effnetv2_best.pt \
+    --manifest data/splits/messidor2_test.csv \
+    --norm-stats data/processed/messidor2_norm_stats.json \
+    --tta
+
+# 10. Generate all conference-paper figures + LaTeX tables in one shot
+#     (confusion matrices, ROC curves, training curves, run-comparison
+#     bar chart + table, per-class metrics tables), across the 3 run
+#     configs at once:
 python scripts/generate_paper_assets.py \
     --checkpoints saved/checkpoints/baseline_best.pt \
                   saved/checkpoints/ablation_ce_weighted_cbam_best.pt \
@@ -79,7 +121,7 @@ gradeeye/
 ├── README.md
 ├── requirements.txt
 │
-├── configs/                       # Run configs (baseline / ablation / full_method)
+├── configs/                       # Run configs (baseline / ablation / full_method / ensemble_effnetv2)
 │
 ├── data/
 │   ├── raw/                       # Downloaded raw datasets (eyepacs/aptos/messidor2)
@@ -98,6 +140,7 @@ gradeeye/
 │   ├── build_manifests.py
 │   ├── compute_norm_stats.py
 │   ├── download_datasets.py
+│   ├── ensemble_evaluate.py       # Ensemble evaluation (average CORN probabilities)
 │   ├── generate_paper_assets.py   # All figures + LaTeX tables in one run
 │   ├── preprocess_all.py
 │   └── train.py                   # CLI entry points for pipeline stages

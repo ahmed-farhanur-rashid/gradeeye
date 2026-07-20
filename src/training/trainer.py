@@ -47,7 +47,7 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
             f"[cyan]Epoch {epoch}[/cyan] train", total=len(dataloader), status=""
         )
         for batch_idx, (images, labels) in enumerate(dataloader):
-            images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
+            images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
 
             images, labels_a, labels_b, lam = maybe_apply_mixup(
@@ -132,7 +132,7 @@ def validate_one_epoch(model, dataloader: DataLoader, device, epoch: int,
             f"[green]Epoch {epoch}[/green] val  ", total=len(dataloader), status=""
         )
         for images, labels in dataloader:
-            images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
+            images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
 
             with torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", dtype=torch.bfloat16):

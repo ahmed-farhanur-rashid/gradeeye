@@ -247,8 +247,15 @@ def main():
 
     model = build_model(config).to(device)
     if device == "cuda":
-        model = model.to(memory_format=torch.channels_last)
-        model = torch.compile(model, mode="max-autotune")
+        arch = config.get("model", {}).get("arch", "convnext_tiny")
+        # channels_last + max-autotune is only validated for ConvNeXt.
+        # EfficientNetV2's depthwise-sep + SE blocks produce corrupted BN
+        # running_stats under this combo, causing val loss explosion.
+        if arch == "convnext_tiny":
+            model = model.to(memory_format=torch.channels_last)
+            model = torch.compile(model, mode="max-autotune")
+        else:
+            model = torch.compile(model)
     ema = ModelEMA(model, decay=config.get("ema_decay", 0.999))
 
     global_step = 0

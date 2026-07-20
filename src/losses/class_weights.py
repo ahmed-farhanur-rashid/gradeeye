@@ -27,6 +27,22 @@ def inverse_sqrt_freq_weights(class_counts: np.ndarray) -> np.ndarray:
     return weights / weights.mean()
 
 
+def effective_number_weights(class_counts: np.ndarray, beta: float = 0.999) -> np.ndarray:
+    """Class-Balanced Loss Based on Effective Number of Samples (Cui et al. CVPR 2019).
+
+    E_n = (1 - beta^n) / (1 - beta), where n = count.
+    Weight = 1 / E_n, normalized to mean 1.
+
+    With beta=0.999, this provides much stronger minority-class emphasis
+    than inverse_sqrt — critical for the Mild class which has only 7% of
+    EyePACS samples and gets squeezed between both CORN thresholds.
+    """
+    counts = np.clip(class_counts, a_min=1, a_max=None)
+    effective_num = (1.0 - np.power(beta, counts)) / (1.0 - beta)
+    weights = 1.0 / effective_num
+    return weights / weights.mean()
+
+
 def clipped_inverse_freq_weights(class_counts: np.ndarray, clip_min: float = 0.5,
                                   clip_max: float = 5.0) -> np.ndarray:
     """w_c = 1 / count_c, normalized to mean 1, then clipped to [clip_min, clip_max]."""
@@ -37,7 +53,7 @@ def clipped_inverse_freq_weights(class_counts: np.ndarray, clip_min: float = 0.5
 
 
 def compute_corn_per_threshold_weights(labels: np.ndarray, num_classes: int,
-                                        method: str = "inverse_sqrt") -> list[np.ndarray]:
+                                        method: str = "clipped_inverse") -> list[np.ndarray]:
     """
     For each CORN threshold k in [0, num_classes-2], compute a 2-element
     weight array [w_negative, w_positive] over the ELIGIBLE subset
@@ -47,7 +63,7 @@ def compute_corn_per_threshold_weights(labels: np.ndarray, num_classes: int,
     — each threshold's binary split gets its own imbalance-aware weights,
     not a single 5-class weight vector reused across all 4 sub-problems.
     """
-    if method not in ("inverse_sqrt", "clipped_inverse"):
+    if method not in ("inverse_sqrt", "clipped_inverse", "effective_number"):
         raise ValueError(f"Unknown method: {method!r}")
 
     num_thresholds = num_classes - 1
@@ -65,6 +81,8 @@ def compute_corn_per_threshold_weights(labels: np.ndarray, num_classes: int,
 
         if method == "inverse_sqrt":
             w = inverse_sqrt_freq_weights(counts)
+        elif method == "effective_number":
+            w = effective_number_weights(counts)
         else:
             w = clipped_inverse_freq_weights(counts)
 

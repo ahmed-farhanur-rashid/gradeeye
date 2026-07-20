@@ -49,11 +49,12 @@ phases:
     manifest_train: "data/splits/aptos_train.csv"
     manifest_val: "data/splits/aptos_val.csv"
     norm_stats: "data/processed/aptos_norm_stats.json"
-    freeze_backbone_only: true   # keep CBAM+head trainable, protect backbone features
+    freeze_backbone: false
     aug_strength: "heavy"
     batch_size: 32
     num_epochs: 10
     head_lr: 0.0001
+    backbone_lr: 0.000001     # 10x lower than before to limit backbone drift
     scheduler: "plateau"
 
 # Ablation candidate, NOT run by default (plan Section 2/5): anisotropic
