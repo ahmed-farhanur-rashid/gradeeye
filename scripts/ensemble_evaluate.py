@@ -1,12 +1,14 @@
 """
 Ensemble evaluation: load multiple CORN-headed models trained via the
-same 3-phase pipeline, average their per-threshold sigmoid probabilities,
+same 3-phase pipeline, average their per-class probability distributions,
 and decode once on the averaged probabilities.
 
-Key insight: averaging at the CORN *probability* level (before rank-
-consistent decode) preserves ordinal confidence information that majority
-voting on final class labels would throw away. This is the standard way
-to ensemble ordinal-regression models.
+Key insight: we average at the CLASS PROBABILITY level (after each model's
+own CORN decode), NOT at the conditional-threshold level. Averaging
+conditional probabilities P(y>k | y>k-1) across models and then decoding
+is mathematically wrong — it breaks CORN's rank-consistency guarantee.
+Instead, each model independently decodes its own conditional probs into
+a proper class distribution, and we average those distributions.
 
 Usage:
     python scripts/ensemble_evaluate.py \
@@ -73,52 +75,41 @@ def load_model_from_checkpoint(checkpoint_path: str, device: str, use_ema: bool 
 
 
 def ensemble_predict_probas(models, images, use_tta: bool = False):
-    """Average CORN sigmoid probabilities across all models, then decode.
+    """Average CLASS PROBABILITY distributions across all models, then predict.
 
-    Each model produces per-threshold logits → sigmoid → P(y > k).
-    We average these probabilities across models, then convert to class
-    probabilities via the standard CORN decode:
-        P(y = k) = P(y > k-1) - P(y > k)
+    Each model independently produces its own full class distribution:
+      CORN: logits → sigmoid → cumprod → P(y=k) via corn_predict_probas()
+      CE:   logits → softmax
+
+    We average these complete class distributions across models, preserving
+    each model's internal rank-consistency, then argmax on the average.
     """
-    all_probas = []
+    all_class_probas = []
 
     for model in models:
         if use_tta:
-            from src.eval.tta import tta_forward
-            # tta_forward returns averaged logits across augmented views
-            avg_logits = tta_forward(model, images, "corn")
-            # Convert logits to per-threshold probabilities
-            threshold_probs = torch.sigmoid(avg_logits)
+            from src.eval.tta import tta_forward, tta_predict_probas
+            # tta_forward returns averaged conditional probabilities (CORN)
+            # or averaged softmax probabilities (CE).
+            avg_probas = tta_forward(model, images, "corn")
+            # Decode conditional probs → class distribution
+            class_probs = tta_predict_probas(avg_probas, "corn")
         else:
             logits = model(images)
-            threshold_probs = torch.sigmoid(logits)
+            # corn_predict_probas: logits → sigmoid → cumprod → class probs
+            class_probs = corn_predict_probas(logits)
 
-        all_probas.append(threshold_probs)
+        all_class_probas.append(class_probs)
 
-    # Average per-threshold probabilities across models
-    avg_threshold_probs = torch.stack(all_probas).mean(dim=0)  # (B, num_thresholds)
+    # Average class probability distributions across models
+    avg_class_probs = torch.stack(all_class_probas).mean(dim=0)  # (B, num_classes)
 
-    # Decode averaged thresholds to class probabilities (CORN rank-consistent)
-    # P(y=0) = 1 - P(y>0)
-    # P(y=k) = P(y>k-1) - P(y>k)  for 0 < k < K
-    # P(y=K) = P(y>K-1)
-    num_thresholds = avg_threshold_probs.shape[1]
-    num_classes = num_thresholds + 1
+    # Re-normalize (floating point can cause tiny deviations from sum=1)
+    avg_class_probs = avg_class_probs.clamp(min=0.0)
+    avg_class_probs = avg_class_probs / avg_class_probs.sum(dim=1, keepdim=True).clamp(min=1e-8)
 
-    class_probs = torch.zeros(avg_threshold_probs.shape[0], num_classes,
-                              device=avg_threshold_probs.device)
-    class_probs[:, 0] = 1.0 - avg_threshold_probs[:, 0]
-    for k in range(1, num_thresholds):
-        class_probs[:, k] = avg_threshold_probs[:, k - 1] - avg_threshold_probs[:, k]
-    class_probs[:, num_classes - 1] = avg_threshold_probs[:, num_thresholds - 1]
-
-    # Clamp to valid range (floating point can cause tiny negatives)
-    class_probs = class_probs.clamp(min=0.0)
-    # Re-normalize
-    class_probs = class_probs / class_probs.sum(dim=1, keepdim=True).clamp(min=1e-8)
-
-    preds = class_probs.argmax(dim=1)
-    return preds, class_probs
+    preds = avg_class_probs.argmax(dim=1)
+    return preds, avg_class_probs
 
 
 def evaluate_ensemble(checkpoint_paths: list[str], manifest_csv: str,

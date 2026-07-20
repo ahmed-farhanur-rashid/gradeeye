@@ -51,9 +51,9 @@ def build_train_transforms(strength: str = "light") -> T.Compose:
     else:  # heavy
         zoom_range = (0.90, 1.10)
         translate_frac = 0.06
-        brightness, contrast = 0.15, 0.15
+        brightness, contrast = 0.20, 0.20
 
-    return T.Compose([
+    aug_list = [
         T.RandomRotation(degrees=180),  # sampling +-180 covers the full 0-360 range
         T.RandomHorizontalFlip(p=0.5),
         T.RandomVerticalFlip(p=0.5),
@@ -63,7 +63,15 @@ def build_train_transforms(strength: str = "light") -> T.Compose:
             scale=zoom_range,
         ),
         T.ColorJitter(brightness=brightness, contrast=contrast),
-    ])
+        T.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
+    ]
+
+    if strength == "heavy":
+        # Small-area erasing is safe for fundus: won't erase the entire
+        # lesion but forces the model to use distributed features.
+        aug_list.append(T.RandomErasing(p=0.3, scale=(0.02, 0.08), ratio=(0.5, 2.0)))
+
+    return T.Compose(aug_list)
 
 
 def build_eval_transforms() -> T.Compose:

@@ -107,11 +107,14 @@ def build_scheduler(optimizer, num_training_steps: int, num_warmup_steps: int = 
                 optimizer, start_factor=0.1, total_iters=num_warmup_steps
             )
             cosine_sched = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, T_max=max(num_training_steps - num_warmup_steps, 1)
+                optimizer, T_max=max(num_training_steps - num_warmup_steps, 1),
+                eta_min=1e-6,
             )
             return torch.optim.lr_scheduler.SequentialLR(
                 optimizer, schedulers=[warmup_sched, cosine_sched], milestones=[num_warmup_steps]
             )
-        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_training_steps)
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=num_training_steps, eta_min=1e-6,
+        )
 
     raise ValueError(f"Unknown scheduler_type: {scheduler_type!r}")

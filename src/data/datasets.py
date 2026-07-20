@@ -57,10 +57,12 @@ class DRDataset(Dataset):
         if img is None:
             raise FileNotFoundError(f"Could not read image: {image_path}")
 
+        # cv2.imread loads BGR; pretrained ImageNet backbones expect RGB.
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         img = normalize_image(img, self.norm_mean, self.norm_std)
 
-        # normalize_image returns float32 HWC in BGR-normalized space;
+        # normalize_image returns float32 HWC in RGB-normalized space;
         # convert to a uint8-range-free tensor directly rather than routing
         # back through PIL, since values are already normalized.
         img_tensor = torch.from_numpy(img.transpose(2, 0, 1)).float()

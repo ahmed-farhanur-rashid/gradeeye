@@ -53,7 +53,7 @@ def clipped_inverse_freq_weights(class_counts: np.ndarray, clip_min: float = 0.5
 
 
 def compute_corn_per_threshold_weights(labels: np.ndarray, num_classes: int,
-                                        method: str = "clipped_inverse") -> list[np.ndarray]:
+                                        method: str = "effective_number") -> list[np.ndarray]:
     """
     For each CORN threshold k in [0, num_classes-2], compute a 2-element
     weight array [w_negative, w_positive] over the ELIGIBLE subset

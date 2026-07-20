@@ -41,19 +41,21 @@ phases:
     freeze_backbone: false
     aug_strength: "light"
     batch_size: 24         # tighter VRAM with EfficientNetV2-S unfrozen
-    num_epochs: 15
+    num_epochs: 35
     head_lr: 0.0001
     backbone_lr: 0.00001
-    warmup_epochs: 1
+    warmup_epochs: 2
     scheduler: "cosine"
 
   phase3_aptos:
     manifest_train: "data/splits/aptos_train.csv"
     manifest_val: "data/splits/aptos_val.csv"
     norm_stats: "data/processed/aptos_norm_stats.json"
-    freeze_backbone_only: true
+    freeze_backbone: false
     aug_strength: "heavy"
     batch_size: 32
-    num_epochs: 10
+    num_epochs: 20
     head_lr: 0.0001
+    backbone_lr: 0.000001
+    warmup_epochs: 1
     scheduler: "plateau"

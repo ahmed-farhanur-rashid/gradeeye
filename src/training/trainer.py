@@ -58,6 +58,12 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
             with torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", dtype=torch.bfloat16):
                 logits = model(images)
 
+            # CRITICAL: cast logits to float32 before loss computation.
+            # BCE_with_logits (used by CORN) is numerically unstable in
+            # bfloat16 — it computes log(sigmoid(x)) which underflows,
+            # causing loss explosion (46k+) especially for EfficientNet.
+            logits = logits.float()
+
             if loss_type == "corn":
                 loss_a = corn_loss(logits, labels_a, NUM_CLASSES, per_threshold_weights)
                 loss_b = corn_loss(logits, labels_b, NUM_CLASSES, per_threshold_weights)
@@ -137,6 +143,9 @@ def validate_one_epoch(model, dataloader: DataLoader, device, epoch: int,
 
             with torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", dtype=torch.bfloat16):
                 logits = model(images)
+
+            # Cast to float32 for numerically stable loss (see train_one_epoch).
+            logits = logits.float()
 
             if loss_type == "corn":
                 loss = corn_loss(logits, labels, NUM_CLASSES, per_threshold_weights)

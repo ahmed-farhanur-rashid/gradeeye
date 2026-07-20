@@ -39,10 +39,10 @@ phases:
     freeze_backbone: false
     aug_strength: "light"
     batch_size: 32
-    num_epochs: 15
+    num_epochs: 35
     head_lr: 0.0001
     backbone_lr: 0.00001
-    warmup_epochs: 1
+    warmup_epochs: 2
     scheduler: "cosine"
 
   phase3_aptos:
@@ -52,9 +52,10 @@ phases:
     freeze_backbone: false
     aug_strength: "heavy"
     batch_size: 32
-    num_epochs: 10
+    num_epochs: 20
     head_lr: 0.0001
     backbone_lr: 0.000001     # 10x lower than before to limit backbone drift
+    warmup_epochs: 1
     scheduler: "plateau"
 
 # Ablation candidate, NOT run by default (plan Section 2/5): anisotropic
