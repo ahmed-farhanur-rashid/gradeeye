@@ -26,28 +26,31 @@ API will allow downloads.
 # 1. Download raw datasets (EyePACS, APTOS, Messidor-2) — all 5-class
 python scripts/download_datasets.py --dataset all
 
-# 2. Build manifests + stratified splits (validates 5-class again)
+# 2. Extract datasets
+python scripts/extract_datasets.py --dataset all
+
+# 3. Build manifests + stratified splits (validates 5-class again)
 python scripts/build_manifests.py --dataset all
 
-# 3. One-shot image preprocessing (border crops, CLAHE, etc.)
+# 4. One-shot image preprocessing (border crops, CLAHE, etc.)
 python scripts/preprocess_all.py
 
-# 4. Compute per-source normalization stats (on preprocessed images)
+# 5. Compute per-source normalization stats (on preprocessed images)
 python scripts/compute_norm_stats.py --dataset all
 
-# 5. Train (pick a run config — see configs/)
+# 6. Train (pick a run config — see configs/)
 python scripts/train.py --config configs/full_method.yaml
 python scripts/train.py --config configs/baseline.yaml
 python scripts/train.py --config configs/ablation_ce_weighted_cbam.yaml
 
-# 6. Evaluate a checkpoint on any split (use --tta for Test-Time Augmentation)
+# 7. Evaluate a checkpoint on any split (use --tta for Test-Time Augmentation)
 python src/eval/evaluate.py \
     --checkpoint saved/checkpoints/full_method_best.pt \
     --manifest data/splits/aptos_test.csv \
     --norm-stats data/processed/aptos_norm_stats.json \
     --tta
 
-# 7. Generate all conference-paper figures + LaTeX tables in one shot
+# 8. Generate all conference-paper figures + LaTeX tables in one shot
 #    (confusion matrices, ROC curves, training curves, run-comparison
 #    bar chart + table, per-class metrics tables), across the 3 run
 #    configs at once:

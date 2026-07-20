@@ -98,7 +98,7 @@ def build_messidor2_manifest():
             f"in this script to specify the correct column names manually."
         )
 
-    df["image_path"] = df[image_col].apply(lambda x: os.path.join(raw_dir, "images", f"{x}"))
+    df["image_path"] = df[image_col].apply(lambda x: os.path.join(raw_dir, "messidor-2", "images", f"{x}"))
     out_df = df[["image_path", label_col]].rename(columns={label_col: "label"})
     out_df = out_df.dropna(subset=["label"])  # drop ungradable images (no label)
     out_df["label"] = out_df["label"].astype(int)

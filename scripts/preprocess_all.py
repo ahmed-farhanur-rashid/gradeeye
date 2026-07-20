@@ -62,6 +62,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--anisotropic", action="store_true", help="Enable anisotropic filtering ablation")
     parser.add_argument("--all-channel-clahe", action="store_true", help="Enable all-channel CLAHE ablation")
+    parser.add_argument("--dataset", choices=["eyepacs", "aptos", "messidor2", "all"], default="all", help="Dataset to preprocess")
     args = parser.parse_args()
 
     manifest_map = {
@@ -69,7 +70,10 @@ def main():
         "aptos": "data/processed/aptos_manifest.csv",
         "messidor2": "data/processed/messidor2_manifest.csv",
     }
-    for name, path in manifest_map.items():
+    
+    targets = list(manifest_map.keys()) if args.dataset == "all" else [args.dataset]
+    for name in targets:
+        path = manifest_map[name]
         preprocess_dataset(path, name, use_anisotropic=args.anisotropic, use_all_channel_clahe=args.all_channel_clahe)
 
 if __name__ == "__main__":
