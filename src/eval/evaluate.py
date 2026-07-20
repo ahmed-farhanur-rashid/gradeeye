@@ -58,10 +58,15 @@ def evaluate_checkpoint(checkpoint_path: str, manifest_csv: str, norm_stats_path
         output_mode=output_mode,
     )
 
+    # torch.compile wraps param names with '_orig_mod.' prefix during training.
+    # Strip it so weights load into the non-compiled eval model.
+    def _strip(sd):
+        return {k.removeprefix("_orig_mod."): v for k, v in sd.items()}
+
     if use_ema and checkpoint.get("ema_state_dict") is not None:
-        model.load_state_dict(checkpoint["ema_state_dict"])
+        model.load_state_dict(_strip(checkpoint["ema_state_dict"]))
     else:
-        model.load_state_dict(checkpoint["model_state_dict"])
+        model.load_state_dict(_strip(checkpoint["model_state_dict"]))
 
     model.to(device)
     model.eval()

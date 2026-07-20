@@ -91,6 +91,12 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     if ema is not None:
         ema.reset(model)
 
+    # Reset best_qwk per phase — each phase may use a DIFFERENT validation
+    # set (EyePACS in Phase 1/2 vs APTOS in Phase 3), so carrying best_qwk
+    # across phases compares apples to oranges and prevents Phase 3 from
+    # ever saving a "best" checkpoint.
+    best_qwk = -1.0
+
     optimizer = build_optimizer(
         model, phase=phase_name,
         head_lr=phase_cfg.get("head_lr", 1e-3),

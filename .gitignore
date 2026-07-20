@@ -26,6 +26,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.zip
 
 # ==============================================================================
 #  ENVIRONMENTS & DEPENDENCIES
@@ -53,7 +54,6 @@ processed/
 raw/
 splits/
 !data/.gitkeep
-*.csv
 *.tsv
 *.dat
 *.hdf5
@@ -70,8 +70,7 @@ splits/
 *.arrow
 
 # Models & Checkpoints
-saved/
-checkpoints/
+saved/checkpoints/
 *.pt
 *.pth
 *.ckpt
@@ -81,7 +80,6 @@ checkpoints/
 *.pb
 
 # Logs & Telemetry
-logs/
 *.log
 runs/
 wandb/
