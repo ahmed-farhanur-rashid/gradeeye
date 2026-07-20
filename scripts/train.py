@@ -120,11 +120,19 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
             checkpoint_dir=checkpoint_dir, run_name=run_name,
         )
 
+        train_state = None
+        if ema is not None:
+            train_state = {k: v.clone() for k, v in model.state_dict().items()}
+            ema.apply_to(model)
+
         val_loss, val_acc, val_preds, val_labels = validate_one_epoch(
             model, val_loader, device, epoch, loss_type=loss_type,
             per_threshold_weights=per_threshold_weights, class_weights=ce_class_weights,
         )
         val_qwk = quadratic_weighted_kappa(val_labels.numpy(), val_preds.numpy())
+
+        if train_state is not None:
+            model.load_state_dict(train_state)
 
         tqdm.write(f"[{phase_name}] Epoch {epoch}: train_loss={train_loss:.4f} train_acc={train_acc:.4f} "
                    f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} val_qwk={val_qwk:.4f}")

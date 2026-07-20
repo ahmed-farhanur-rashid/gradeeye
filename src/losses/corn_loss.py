@@ -30,7 +30,7 @@ def corn_loss(logits: torch.Tensor, labels: torch.Tensor, num_classes: int,
     num_thresholds = num_classes - 1
     device = logits.device
     total_loss = torch.tensor(0.0, device=device)
-    total_terms = 0
+    num_valid_thresholds = 0
 
     for k in range(num_thresholds):
         # Task k: predict whether label > k, but ONLY among samples with
@@ -52,10 +52,10 @@ def corn_loss(logits: torch.Tensor, labels: torch.Tensor, num_classes: int,
             weights_k = build_sample_weights_for_threshold(eligible_labels, k, per_threshold_weights[k])
             loss_k = loss_k * weights_k
 
-        total_loss = total_loss + loss_k.sum()
-        total_terms += eligible_mask.sum().item()
+        total_loss = total_loss + loss_k.mean()
+        num_valid_thresholds += 1
 
-    if total_terms == 0:
+    if num_valid_thresholds == 0:
         return total_loss  # degenerate empty-batch edge case
 
-    return total_loss / total_terms
+    return total_loss / num_valid_thresholds
