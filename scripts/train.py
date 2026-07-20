@@ -17,6 +17,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
+import logging
+logging.getLogger("torch._inductor.utils").setLevel(logging.ERROR)
 import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
