@@ -78,6 +78,18 @@ class DRGradingModel(nn.Module):
             for param in self.cbam_modules.parameters():
                 param.requires_grad = True
 
+    def freeze_backbone_only(self):
+        """For Phase 3 domain adaptation: freeze backbone but keep CBAM + head
+        trainable. Prevents destroying generalizable DR features learned from
+        EyePACS while allowing attention and classification head to adapt to
+        the target domain (APTOS)."""
+        for param in self.backbone.parameters():
+            param.requires_grad = False
+        # CBAM stays trainable — attention patterns should adapt to new domain
+        if self.use_cbam:
+            for param in self.cbam_modules.parameters():
+                param.requires_grad = True
+
 
 def build_model(config: dict) -> DRGradingModel:
     """

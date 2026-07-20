@@ -82,8 +82,11 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     )
 
     freeze = phase_cfg.get("freeze_backbone", False)
+    freeze_backbone_only = phase_cfg.get("freeze_backbone_only", False)
     if freeze:
         model.freeze_backbone()
+    elif freeze_backbone_only:
+        model.freeze_backbone_only()
     else:
         model.unfreeze_backbone()
 
@@ -133,7 +136,7 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
 
     # ── Phase banner ──
     ui.print_phase_start(phase_name, phase_idx, total_phases,
-                         num_epochs, batch_size, freeze)
+                         num_epochs, batch_size, freeze or freeze_backbone_only)
 
     for epoch in range(start_epoch, num_epochs):
         train_loss, train_acc, global_step = train_one_epoch(

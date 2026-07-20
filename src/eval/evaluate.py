@@ -123,6 +123,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--no-ema", action="store_true", help="Use raw weights instead of EMA shadow.")
     parser.add_argument("--tta", action="store_true", help="Enable Test-Time Augmentation")
+    parser.add_argument("--log-dir", default="saved/logs", help="Directory to save eval results JSON")
     args = parser.parse_args()
 
     result = evaluate_checkpoint(
@@ -138,6 +139,25 @@ def main():
         print(f"Macro AUC-ROC: {result['metrics']['macro_auc_roc']:.4f}")
     print("\nConfusion matrix:")
     print(result["confusion_matrix_str"])
+
+    # ── Save results to log ──
+    import datetime
+    os.makedirs(args.log_dir, exist_ok=True)
+    log_entry = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "checkpoint": os.path.abspath(args.checkpoint),
+        "manifest": os.path.abspath(args.manifest),
+        "use_ema": not args.no_ema,
+        "use_tta": args.tta,
+        "n_samples": result["n_samples"],
+        "metrics": {k: round(v, 6) if isinstance(v, float) else v
+                    for k, v in result["metrics"].items()},
+        "confusion_matrix": result["confusion_matrix"].tolist(),
+    }
+    log_path = os.path.join(args.log_dir, "eval_results.jsonl")
+    with open(log_path, "a") as f:
+        f.write(json.dumps(log_entry) + "\n")
+    print(f"\n→ Results saved to {log_path}")
 
 
 if __name__ == "__main__":
