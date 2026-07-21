@@ -40,8 +40,8 @@ phases:
     aug_strength: "light"
     batch_size: 48
     num_epochs: 35
-    head_lr: 0.000122       # sqrt-scaled from 1e-4 at bs=32 → bs=48
-    backbone_lr: 0.0000122  # sqrt-scaled from 1e-5
+    head_lr: 0.000122 # sqrt-scaled from 1e-4 at bs=32 → bs=48
+    backbone_lr: 0.0000122 # sqrt-scaled from 1e-5
     weight_decay: 0.01
     warmup_epochs: 2
     scheduler: "cosine"
@@ -57,10 +57,11 @@ phases:
     batch_size: 32
     num_epochs: 20
     head_lr: 0.0001
-    backbone_lr: 0.000001     # 10x lower than before to limit backbone drift
+    backbone_lr: 0.000001 # 10x lower than before to limit backbone drift
     warmup_epochs: 1
     scheduler: "plateau"
-    overfitting_patience: 0  # let all 20 epochs run; plateau LR handles decay
+    overfitting_patience: 0 # let all 20 epochs run; plateau LR handles decay
+
 
 # Ablation candidate, NOT run by default (plan Section 2/5): anisotropic
 # diffusion filter on/off toggle. Enable manually as a single extra run on

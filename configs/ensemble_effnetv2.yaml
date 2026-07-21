@@ -28,11 +28,21 @@ phases:
     norm_stats: "data/processed/eyepacs_norm_stats.json"
     freeze_backbone: true
     aug_strength: "light"
-    batch_size: 512       # frozen backbone = no gradient memory
-    num_epochs: 5
+    batch_size: 512 # frozen backbone = no gradient memory
+    num_epochs:
+      10 # was 5 — cosine decay was killing LR before the
+      # head escaped majority-class ("No DR") collapse;
+      # QWK stayed ~0 for all 5 epochs across 3 runs.
     head_lr: 0.001
-    warmup_epochs: 1
-    scheduler: "cosine"
+    warmup_epochs:
+      2 # was 1 — only 1 epoch near peak LR wasn't enough
+      # for a random-init head on frozen features.
+    scheduler:
+      "plateau" # was cosine — cosine decays on a fixed clock
+      # regardless of whether the head has started
+      # discriminating classes yet; plateau only
+      # decays once val_loss actually stalls, so the
+      # head keeps a useful LR for as long as it needs.
 
   phase2_full_training:
     manifest_train: "data/splits/eyepacs_train.csv"
@@ -40,10 +50,10 @@ phases:
     norm_stats: "data/processed/eyepacs_norm_stats.json"
     freeze_backbone: false
     aug_strength: "light"
-    batch_size: 64         # profiled at 9.06GB peak on 12GB VRAM
+    batch_size: 64 # profiled at 9.06GB peak on 12GB VRAM
     num_epochs: 35
-    head_lr: 0.000163       # sqrt-scaled from 1e-4 at bs=24 → bs=64
-    backbone_lr: 0.0000163  # sqrt-scaled from 1e-5
+    head_lr: 0.000163 # sqrt-scaled from 1e-4 at bs=24 → bs=64
+    backbone_lr: 0.0000163 # sqrt-scaled from 1e-5
     weight_decay: 0.01
     warmup_epochs: 2
     scheduler: "cosine"

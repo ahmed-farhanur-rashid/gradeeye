@@ -37,8 +37,13 @@ class ModelEMA:
     @torch.no_grad()
     def update(self, model: torch.nn.Module):
         self.updates += 1
-        # Warmup: rapidly update shadow weights early in training
-        d = min(self.decay, (1 + self.updates) / (10 + self.updates))
+        # Warmup: rapidly update shadow weights early in training.
+        # `updates` can start negative right after reset() (see its
+        # warmup_floor_updates docstring) to extend this warmup window;
+        # clamp the numerator/denominator inputs at 0 so d stays a valid,
+        # non-negative decay rather than going negative or blowing up.
+        effective_updates = max(self.updates, 0)
+        d = min(self.decay, (1 + effective_updates) / (10 + effective_updates))
         
         model_state = model.state_dict()
         for key, shadow_val in self.shadow.items():
@@ -63,19 +68,33 @@ class ModelEMA:
     def load_state_dict(self, state_dict: dict):
         self.shadow = copy.deepcopy(_strip_compile_prefix(state_dict))
 
-    def reset(self, model: torch.nn.Module):
+    def reset(self, model: torch.nn.Module, warmup_floor_updates: int = 200):
         """Re-snapshot shadow weights from current model and restart warmup.
 
-        Must be called at phase transitions (e.g. Phase 1 → Phase 2) so the
+        Must be called at phase transitions (e.g. Phase 1 -> Phase 2) so the
         EMA doesn't drag stale frozen-backbone weights into the fine-tuning
         phase.  Without this, the warmup counter is already maxed out from
         Phase 1 and the decay stays at 0.999, making the shadow effectively
         stuck on Phase 1 weights.
+
+        warmup_floor_updates: after a reset, self.updates is negatively
+        offset so the (1+updates)/(10+updates) warmup schedule in update()
+        stays low (near-raw-model tracking) for longer. This matters most
+        for BatchNorm backbones (e.g. EfficientNetV2): right after a phase
+        transition (frozen -> unfrozen backbone), running_mean/running_var
+        are copied fresh every step (not EMA-blended), while conv/linear
+        weights ARE EMA-blended. A short warmup let those diverge fast
+        (weights barely trained, but paired with live BN stats from a
+        newly-unfrozen backbone), producing a weights/BN-stats mismatch that
+        blew up validation loss (23k-30k+) on BN-heavy backbones. LayerNorm
+        backbones (ConvNeXt) have no running-stats buffers at all, so they
+        never hit this path -- this only slows how fast the EMA shadow
+        converges toward the live model right after a reset.
         """
         self.shadow = copy.deepcopy(model.state_dict())
         for v in self.shadow.values():
             v.requires_grad_(False)
-        self.updates = 0
+        self.updates = -warmup_floor_updates
 
     def apply_to(self, model: torch.nn.Module):
         """Load EMA shadow weights into a model (e.g. for eval).

@@ -191,7 +191,7 @@ def plot_run_comparison(results: dict, out_dir: str, metric: str = "qwk") -> dic
     run_names = list(results.keys())
     values = [results[r][metric] for r in run_names]
 
-    bars = ax.bar(run_names, values, color=["#888888", "#4C72B0", "#55A868"][:len(run_names)])
+    bars = ax.bar(run_names, values, color=["#888888", "#4C72B0", "#55A868", "#C43C35", "#DD8452"][:len(run_names)])
     ax.set_ylabel(metric.upper() if metric == "qwk" else metric.replace("_", " ").title())
     ax.set_title(f"Run comparison — {metric.upper() if metric == 'qwk' else metric}")
     ax.set_ylim(0, 1)

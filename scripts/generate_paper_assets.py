@@ -130,6 +130,7 @@ def main():
             num_thresholds=model_cfg.get("num_thresholds", 4),
             head_hidden_dim=model_cfg.get("head_hidden_dim", 512),
             dropout=model_cfg.get("dropout", 0.3), output_mode=output_mode,
+            arch=model_cfg.get("arch", "convnext_tiny"),
         )
         state_key = "ema_state_dict" if checkpoint.get("ema_state_dict") else "model_state_dict"
         model.load_state_dict(checkpoint[state_key])
