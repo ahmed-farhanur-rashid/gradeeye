@@ -28,7 +28,7 @@ phases:
     norm_stats: "data/processed/eyepacs_norm_stats.json"
     freeze_backbone: true
     aug_strength: "light"
-    batch_size: 128       # EfficientNetV2-S uses more VRAM than ConvNeXt-Tiny
+    batch_size: 512       # frozen backbone = no gradient memory
     num_epochs: 5
     head_lr: 0.001
     warmup_epochs: 1
@@ -40,10 +40,10 @@ phases:
     norm_stats: "data/processed/eyepacs_norm_stats.json"
     freeze_backbone: false
     aug_strength: "light"
-    batch_size: 24         # tighter VRAM with EfficientNetV2-S unfrozen
+    batch_size: 64         # profiled at 9.06GB peak on 12GB VRAM
     num_epochs: 35
-    head_lr: 0.0001
-    backbone_lr: 0.00001
+    head_lr: 0.000163       # sqrt-scaled from 1e-4 at bs=24 → bs=64
+    backbone_lr: 0.0000163  # sqrt-scaled from 1e-5
     weight_decay: 0.01
     warmup_epochs: 2
     scheduler: "cosine"

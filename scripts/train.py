@@ -39,7 +39,7 @@ from src.training.trainer import train_one_epoch, validate_one_epoch
 from src.training import progress as ui
 
 NUM_CLASSES = 5
-NUM_DATALOADER_WORKERS = min(4, os.cpu_count() or 1)
+NUM_DATALOADER_WORKERS = min(6, os.cpu_count() or 1)
 
 
 def load_config(path: str) -> dict:
@@ -56,10 +56,12 @@ def build_dataloaders(manifest_train, manifest_val, norm_stats_path, aug_strengt
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
                                num_workers=NUM_DATALOADER_WORKERS,
-                               pin_memory=True, drop_last=True)
+                               pin_memory=True, drop_last=True,
+                               persistent_workers=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
                              num_workers=NUM_DATALOADER_WORKERS,
-                             pin_memory=True)
+                             pin_memory=True,
+                             persistent_workers=True)
     return train_loader, val_loader, train_ds
 
 
@@ -297,12 +299,13 @@ def main():
     model = build_model(config).to(device)
     if device == "cuda":
         arch = config.get("model", {}).get("arch", "convnext_tiny")
-        # channels_last + max-autotune is only validated for ConvNeXt.
-        # EfficientNetV2's depthwise-sep + SE blocks produce corrupted BN
-        # running_stats under this combo, causing val loss explosion.
+        # channels_last + reduce-overhead for ConvNeXt. reduce-overhead
+        # uses CUDA graphs for lower kernel-launch overhead and leaves more
+        # VRAM for larger batches than max-autotune (which also warns
+        # "Not enough SMs" on RTX 4070 Super anyway).
         if arch == "convnext_tiny":
             model = model.to(memory_format=torch.channels_last)
-            model = torch.compile(model, mode="max-autotune")
+            model = torch.compile(model, mode="reduce-overhead")
         else:
             model = torch.compile(model)
     ema = ModelEMA(model, decay=config.get("ema_decay", 0.999))
