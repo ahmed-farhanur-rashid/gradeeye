@@ -77,8 +77,12 @@ def build_dataloaders(manifest_train, manifest_val, norm_stats_path, aug_strengt
 def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
               checkpoint_dir: str, log_dir: str, run_name: str, global_step: int,
               ema: ModelEMA, best_qwk: float, global_epoch_idx: list,
-              phase_idx: int, total_phases: int, start_epoch: int = 0):
+              phase_idx: int, total_phases: int, start_epoch: int = 0,
+              val_model=None):
     """Run a single training phase (frozen-head, full-finetune, or APTOS)."""
+    if val_model is None:
+        val_model = model
+
     from src.eval.metrics import quadratic_weighted_kappa
 
     manifest_train = phase_cfg["manifest_train"]
@@ -94,12 +98,13 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
 
     freeze = phase_cfg.get("freeze_backbone", False)
     freeze_backbone_only = phase_cfg.get("freeze_backbone_only", False)
-    if freeze:
-        model.freeze_backbone()
-    elif freeze_backbone_only:
-        model.freeze_backbone_only()
-    else:
-        model.unfreeze_backbone()
+    for m in [model, val_model]:
+        if freeze:
+            m.freeze_backbone()
+        elif freeze_backbone_only:
+            m.freeze_backbone_only()
+        else:
+            m.unfreeze_backbone()
 
     # Reset EMA at each phase transition so shadow weights start fresh.
     if ema is not None:
@@ -172,19 +177,18 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
             scheduler=step_scheduler,
         )
 
-        train_state = None
         if ema is not None:
-            train_state = {k: v.clone() for k, v in model.state_dict().items()}
-            ema.apply_to(model)
+            ema.apply_to(val_model)
+        else:
+            sd = model.state_dict()
+            val_sd = {k.removeprefix("_orig_mod."): v for k, v in sd.items()}
+            val_model.load_state_dict(val_sd)
 
         val_loss, val_acc, val_preds, val_labels = validate_one_epoch(
-            model, val_loader, device, epoch, loss_type=loss_type,
+            val_model, val_loader, device, epoch, loss_type=loss_type,
             per_threshold_weights=per_threshold_weights, class_weights=ce_class_weights,
         )
         val_qwk = quadratic_weighted_kappa(val_labels.numpy(), val_preds.numpy())
-
-        if train_state is not None:
-            model.load_state_dict(train_state)
 
         # ── Best checkpoint tracking ──
         is_new_best = val_qwk > best_qwk
@@ -260,6 +264,9 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         from src.training.checkpoint import load_checkpoint
         best_ckpt = load_checkpoint(best_ckpt_path, map_location=str(device))
         model.load_state_dict(best_ckpt["model_state_dict"])
+        # Strip compile prefix for uncompiled val_model
+        clean_sd = {k.removeprefix("_orig_mod."): v for k, v in best_ckpt["model_state_dict"].items()}
+        val_model.load_state_dict(clean_sd)
         if ema is not None and best_ckpt.get("ema_state_dict"):
             ema.load_state_dict(best_ckpt["ema_state_dict"])
         ui.log(
@@ -311,6 +318,7 @@ def main():
     ui.print_header(run_name, device, config.get("loss_type", "corn"))
 
     model = build_model(config).to(device)
+    val_model = build_model(config).to(device)
     if device == "cuda":
         arch = config.get("model", {}).get("arch", "convnext_tiny")
         # channels_last helps ConvNeXt's depthwise convolutions.
@@ -334,6 +342,9 @@ def main():
         ui.log(f"Resuming from {args.resume}...", style="bold yellow")
         ckpt = load_checkpoint(args.resume, map_location=device)
         model.load_state_dict(ckpt["model_state_dict"])
+        # Strip compile prefix for uncompiled val_model
+        clean_sd = {k.removeprefix("_orig_mod."): v for k, v in ckpt["model_state_dict"].items()}
+        val_model.load_state_dict(clean_sd)
         if ema and ckpt.get("ema_state_dict"):
             ema.load_state_dict(ckpt["ema_state_dict"])
         global_step = ckpt.get("global_step", 0)
@@ -368,6 +379,7 @@ def main():
             checkpoint_dir, log_dir, run_name, global_step, ema, best_qwk,
             global_epoch_idx, phase_idx=i, total_phases=total_phases,
             start_epoch=start_epoch,
+            val_model=val_model,
         )
 
     ui.print_training_complete(best_qwk, run_name)
@@ -375,3 +387,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
