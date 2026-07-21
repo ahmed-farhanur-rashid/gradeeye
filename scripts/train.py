@@ -299,15 +299,13 @@ def main():
     model = build_model(config).to(device)
     if device == "cuda":
         arch = config.get("model", {}).get("arch", "convnext_tiny")
-        # channels_last + reduce-overhead for ConvNeXt. reduce-overhead
-        # uses CUDA graphs for lower kernel-launch overhead and leaves more
-        # VRAM for larger batches than max-autotune (which also warns
-        # "Not enough SMs" on RTX 4070 Super anyway).
+        # channels_last helps ConvNeXt's depthwise convolutions.
+        # Use default torch.compile mode — reduce-overhead/max-autotune
+        # use CUDA Graphs which pre-allocate ~8GB in private pools,
+        # leaving no room for MixUp's temporary tensors.
         if arch == "convnext_tiny":
             model = model.to(memory_format=torch.channels_last)
-            model = torch.compile(model, mode="reduce-overhead")
-        else:
-            model = torch.compile(model)
+        model = torch.compile(model)
     ema = ModelEMA(model, decay=config.get("ema_decay", 0.999))
 
     global_step = 0

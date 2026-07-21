@@ -100,7 +100,10 @@ def mixup_batch(images: torch.Tensor, labels: torch.Tensor, alpha: float = 0.2):
     batch_size = images.size(0)
     perm = torch.randperm(batch_size, device=images.device)
 
-    mixed_images = lam * images + (1 - lam) * images[perm]
+    # Memory-efficient: in-place lerp avoids allocating 2 temporaries
+    # the size of the batch (caused OOM at bs=384 with 384×384 images).
+    mixed_images = images.clone()
+    mixed_images.lerp_(images[perm], 1 - lam)
     labels_a, labels_b = labels, labels[perm]
     return mixed_images, labels_a, labels_b, lam
 
