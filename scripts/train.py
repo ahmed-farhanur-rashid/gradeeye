@@ -41,7 +41,7 @@ from src.training.trainer import train_one_epoch, validate_one_epoch
 from src.training import progress as ui
 
 NUM_CLASSES = 5
-NUM_DATALOADER_WORKERS = min(6, os.cpu_count() or 1)
+NUM_DATALOADER_WORKERS = min(4, os.cpu_count() or 1)
 
 def set_seed(seed: int = 42):
     random.seed(seed)

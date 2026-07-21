@@ -46,6 +46,14 @@ class DRGradingModel(nn.Module):
             dropout=dropout,
             output_mode=output_mode,
         )
+        self._backbone_frozen = False
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if getattr(self, "_backbone_frozen", False):
+            self.backbone.eval()
+            if self.use_cbam:
+                self.cbam_modules.eval()
 
     def forward(self, x):
         stage_features = self.backbone(x)  # list of feature maps, shallow -> deep
@@ -70,6 +78,7 @@ class DRGradingModel(nn.Module):
         if self.use_cbam:
             for param in self.cbam_modules.parameters():
                 param.requires_grad = False
+        self._backbone_frozen = True
 
     def unfreeze_backbone(self):
         """For Phase 2/3: full unfreeze."""
@@ -78,6 +87,7 @@ class DRGradingModel(nn.Module):
         if self.use_cbam:
             for param in self.cbam_modules.parameters():
                 param.requires_grad = True
+        self._backbone_frozen = False
 
     def freeze_backbone_only(self):
         """For Phase 3 domain adaptation: freeze backbone but keep CBAM + head
@@ -90,6 +100,7 @@ class DRGradingModel(nn.Module):
         if self.use_cbam:
             for param in self.cbam_modules.parameters():
                 param.requires_grad = True
+        self._backbone_frozen = True
 
 
 def build_model(config: dict) -> DRGradingModel:
