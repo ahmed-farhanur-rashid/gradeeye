@@ -47,6 +47,8 @@ phases:
     weight_decay: 0.01
     warmup_epochs: 2
     scheduler: "cosine"
+    min_epochs: 10
+    overfitting_patience: 10
 
   phase3_aptos:
     manifest_train: "data/splits/aptos_train.csv"
@@ -60,3 +62,4 @@ phases:
     backbone_lr: 0.000001
     warmup_epochs: 1
     scheduler: "plateau"
+    overfitting_patience: 0

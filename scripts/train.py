@@ -134,11 +134,18 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     is_plateau = isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
     step_scheduler = None if is_plateau else scheduler
 
-    # Early stopping: stop if val QWK hasn't improved for `patience` epochs.
-    # Prevents the severe overfitting observed in Phase 2 where train/val
-    # loss gap grew to 0.43 while QWK degraded for the last 14 of 35 epochs.
-    early_stop_patience = phase_cfg.get("early_stop_patience", 7)
-    epochs_without_improvement = 0
+    # ── Overfitting detection (replaces QWK-based early stopping) ──
+    # QWK is too noisy on small val sets (caused premature Phase 3 stop
+    # at epoch 9 when val_loss was still decreasing 0.512→0.397).
+    # Instead, track consecutive val_loss INCREASES — this catches real
+    # overfitting (memorization) not metric noise.
+    #
+    # Guard only fires after `min_epochs` AND after `overfitting_patience`
+    # consecutive val_loss increases.  Set overfitting_patience=0 to disable.
+    overfitting_patience = phase_cfg.get("overfitting_patience", 10)
+    min_epochs = phase_cfg.get("min_epochs", 8)
+    consecutive_val_loss_increases = 0
+    best_val_loss_so_far = float("inf")
 
     # ── Phase banner ──
     ui.print_phase_start(phase_name, phase_idx, total_phases,
@@ -168,13 +175,10 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         if train_state is not None:
             model.load_state_dict(train_state)
 
-        # ── Epoch summary ──
+        # ── Best checkpoint tracking ──
         is_new_best = val_qwk > best_qwk
         if is_new_best:
             best_qwk = val_qwk
-            epochs_without_improvement = 0
-        else:
-            epochs_without_improvement += 1
 
         current_lr = optimizer.param_groups[0]["lr"]
         best_path = os.path.join(checkpoint_dir, f"{run_name}_best.pt") if is_new_best else None
@@ -217,23 +221,41 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
                 phase_name=phase_name,
             )
 
-        # ── Early stopping ──
-        if epochs_without_improvement >= early_stop_patience:
-            ui.log(
-                f"Early stopping: val QWK hasn't improved for "
-                f"{early_stop_patience} epochs (best={best_qwk:.4f}). "
-                f"Restoring best checkpoint.",
-                style="bold yellow",
-            )
-            # Restore best model weights so next phase starts from peak
-            best_ckpt_path = os.path.join(checkpoint_dir, f"{run_name}_best.pt")
-            if os.path.exists(best_ckpt_path):
-                from src.training.checkpoint import load_checkpoint
-                best_ckpt = load_checkpoint(best_ckpt_path, map_location=str(device))
-                model.load_state_dict(best_ckpt["model_state_dict"])
-                if ema is not None and best_ckpt.get("ema_state_dict"):
-                    ema.load_state_dict(best_ckpt["ema_state_dict"])
-            break
+        # ── Overfitting detection ──
+        if overfitting_patience > 0:
+            if val_loss > best_val_loss_so_far:
+                consecutive_val_loss_increases += 1
+            else:
+                consecutive_val_loss_increases = 0
+                best_val_loss_so_far = val_loss
+
+            if (epoch >= min_epochs
+                    and consecutive_val_loss_increases >= overfitting_patience):
+                ui.log(
+                    f"Overfitting detected: val_loss increased for "
+                    f"{overfitting_patience} consecutive epochs "
+                    f"(best_val_loss={best_val_loss_so_far:.4f}, "
+                    f"current={val_loss:.4f}). Stopping phase.",
+                    style="bold yellow",
+                )
+                break
+
+    # ── Always restore best checkpoint at phase end ──
+    # Ensures the next phase starts from the best model state, not the
+    # last (potentially overfit) epoch. Previously this only happened
+    # on early stop, causing Phase 3 to inherit degraded Phase 2 weights.
+    best_ckpt_path = os.path.join(checkpoint_dir, f"{run_name}_best.pt")
+    if os.path.exists(best_ckpt_path):
+        from src.training.checkpoint import load_checkpoint
+        best_ckpt = load_checkpoint(best_ckpt_path, map_location=str(device))
+        model.load_state_dict(best_ckpt["model_state_dict"])
+        if ema is not None and best_ckpt.get("ema_state_dict"):
+            ema.load_state_dict(best_ckpt["ema_state_dict"])
+        ui.log(
+            f"Phase {phase_name} complete — restored best checkpoint "
+            f"(QWK={best_qwk:.4f})",
+            style="bold green",
+        )
 
     return global_step, best_qwk
 
