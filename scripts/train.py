@@ -11,6 +11,8 @@ import argparse
 import json
 import os
 import sys
+import random
+import numpy as np
 
 # Allow running as `python scripts/train.py` (not just `python -m scripts.train`)
 # by ensuring the repo root is on sys.path.
@@ -40,6 +42,13 @@ from src.training import progress as ui
 
 NUM_CLASSES = 5
 NUM_DATALOADER_WORKERS = min(6, os.cpu_count() or 1)
+
+def set_seed(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def load_config(path: str) -> dict:
@@ -281,6 +290,11 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
+    
+    # Set random seed for reproducibility
+    seed = config.get("seed", 42)
+    set_seed(seed)
+
     run_name = config["run_name"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cuda":
