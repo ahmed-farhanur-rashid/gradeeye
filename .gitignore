@@ -119,6 +119,7 @@ cover/
 .spyproject
 .vscode-test/
 no_upload/
+.SKILLS/
 
 # ==============================================================================
 #  OS GENERATED FILES
