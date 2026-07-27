@@ -1,8 +1,15 @@
-# Full method: CORN ordinal loss + CBAM (last 2 stages) + per-threshold
-# class weighting + MixUp. This is the primary configuration the whole
-# plan is built around.
+# Full method on ConvNeXt-Tiny + Option A segmentation (vessel mask as 4th
+# channel). Identical to full_method_convnext.yaml except `model.in_chans=4`
+# and `phase.*.seg_dir` point at the pre-computed masks directory.
 
-run_name: "full_method"
+# IMPORTANT: Before running this config, generate masks first:
+#   python scripts/precompute_seg_masks.py --datasets eyepacs aptos messidor2
+#
+# That writes masks to data/processed/segmentation/{eyepacs,aptos,messidor2}/.
+# If masks are missing the dataset falls back to zeros for that image, which
+# silently degrades performance — always run precompute first.
+
+run_name: "full_method_convnext_seg"
 checkpoint_dir: "saved/checkpoints"
 log_dir: "saved/logs"
 ema_decay: 0.999
@@ -12,18 +19,21 @@ use_class_weighting: true
 use_mixup: true
 
 model:
+  arch: "convnext_tiny"
   pretrained: true
   use_cbam: true
   cbam_num_stages: 2
   num_thresholds: 4
   head_hidden_dim: 512
   dropout: 0.4
+  channels_last: true
+  in_chans: 4           # 3 RGB + 1 vessel mask
 
 phases:
   phase1_frozen:
     manifest_train: "data/splits/eyepacs_train.csv"
     manifest_val: "data/splits/eyepacs_val.csv"
-    norm_stats: "data/processed/eyepacs_norm_stats.json"
+    seg_dir: "data/processed/segmentation/eyepacs"
     freeze_backbone: true
     aug_strength: "light"
     batch_size: 384
@@ -35,13 +45,13 @@ phases:
   phase2_full_training:
     manifest_train: "data/splits/eyepacs_train.csv"
     manifest_val: "data/splits/eyepacs_val.csv"
-    norm_stats: "data/processed/eyepacs_norm_stats.json"
+    seg_dir: "data/processed/segmentation/eyepacs"
     freeze_backbone: false
     aug_strength: "light"
     batch_size: 48
     num_epochs: 35
-    head_lr: 0.000122 # sqrt-scaled from 1e-4 at bs=32 → bs=48
-    backbone_lr: 0.0000122 # sqrt-scaled from 1e-5
+    head_lr: 0.000122
+    backbone_lr: 0.0000122
     weight_decay: 0.01
     warmup_epochs: 2
     scheduler: "cosine"
@@ -51,19 +61,13 @@ phases:
   phase3_aptos:
     manifest_train: "data/splits/aptos_train.csv"
     manifest_val: "data/splits/aptos_val.csv"
-    norm_stats: "data/processed/aptos_norm_stats.json"
-    freeze_backbone: false
+    seg_dir: "data/processed/segmentation/aptos"
+    freeze_backbone_only: true
     aug_strength: "heavy"
     batch_size: 32
     num_epochs: 20
     head_lr: 0.0001
-    backbone_lr: 0.000001 # 10x lower than before to limit backbone drift
+    backbone_lr: 0.0
     warmup_epochs: 1
     scheduler: "plateau"
-    overfitting_patience: 0 # let all 20 epochs run; plateau LR handles decay
-
-
-# Ablation candidate, NOT run by default (plan Section 2/5): anisotropic
-# diffusion filter on/off toggle. Enable manually as a single extra run on
-# this full configuration only, if time remains after the 3 core runs.
-# use_anisotropic_filter: false  # wire into DRDataset construction if used
+    overfitting_patience: 0

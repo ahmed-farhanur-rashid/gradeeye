@@ -1,0 +1,64 @@
+# Full method on ConvNeXt-Tiny backbone.
+# CORN ordinal loss + CBAM (last 2 stages) + per-threshold class weighting + MixUp.
+# Renamed from full_method.yaml; behavior equivalent to original full method.
+
+run_name: "full_method_convnext"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "corn"
+use_class_weighting: true
+use_mixup: true
+
+model:
+  arch: "convnext_tiny"
+  pretrained: true
+  use_cbam: true
+  cbam_num_stages: 2
+  num_thresholds: 4
+  head_hidden_dim: 512
+  dropout: 0.4
+  channels_last: true   # ConvNeXt depthwise convs benefit from channels_last memory format
+  # in_chans: 4        # Uncomment to enable Option A segmentation (4th channel = vessel mask)
+  # seg_dir: "data/processed/segmentation/eyepacs"  # set per-phase below
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 384
+    num_epochs: 5
+    head_lr: 0.001
+    warmup_epochs: 1
+    scheduler: "cosine"
+
+  phase2_full_training:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 48
+    num_epochs: 35
+    head_lr: 0.000122        # sqrt-scaled from 1e-4 at bs=32 -> bs=48
+    backbone_lr: 0.0000122   # sqrt-scaled from 1e-5
+    weight_decay: 0.01
+    warmup_epochs: 2
+    scheduler: "cosine"
+    min_epochs: 10
+    overfitting_patience: 10
+
+  phase3_aptos:
+    manifest_train: "data/splits/aptos_train.csv"
+    manifest_val: "data/splits/aptos_val.csv"
+    freeze_backbone_only: true  # keep pretrained backbone frozen; adapt CBAM + head
+    aug_strength: "heavy"
+    batch_size: 32
+    num_epochs: 20
+    head_lr: 0.0001
+    backbone_lr: 0.0            # explicit: backbone is fully frozen in this phase
+    warmup_epochs: 1
+    scheduler: "plateau"
+    overfitting_patience: 0

@@ -89,10 +89,10 @@ def ensemble_predict_probas(models, images, use_tta: bool = False):
     for model in models:
         if use_tta:
             from src.eval.tta import tta_forward, tta_predict_probas
-            # tta_forward returns averaged conditional probabilities (CORN)
-            # or averaged softmax probabilities (CE).
+            # tta_forward now returns averaged CLASS probabilities
+            # (decoded per-pass then averaged) — tta_predict_probas is
+            # identity for the new contract.
             avg_probas = tta_forward(model, images, "corn")
-            # Decode conditional probs → class distribution
             class_probs = tta_predict_probas(avg_probas, "corn")
         else:
             logits = model(images)
@@ -113,7 +113,8 @@ def ensemble_predict_probas(models, images, use_tta: bool = False):
 
 
 def evaluate_ensemble(checkpoint_paths: list[str], manifest_csv: str,
-                      norm_stats_path: str, batch_size: int = 32,
+                      norm_stats_path: str | None = None,
+                      batch_size: int = 32,
                       device: str | None = None, use_ema: bool = True,
                       use_tta: bool = False) -> dict:
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -128,10 +129,8 @@ def evaluate_ensemble(checkpoint_paths: list[str], manifest_csv: str,
         arch = config.get("model", {}).get("arch", "convnext_tiny")
         print(f"  Loaded: {os.path.basename(path)} ({arch})")
 
-    # Build dataloader
-    with open(norm_stats_path) as f:
-        norm_stats = json.load(f)
-    dataset = DRDataset(manifest_csv, norm_stats, transform=build_eval_transforms())
+    # Build dataloader (ImageNet normalization is the default in DRDataset)
+    dataset = DRDataset(manifest_csv, transform=build_eval_transforms())
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=2)
 
     all_preds, all_labels, all_probas = [], [], []
@@ -165,7 +164,10 @@ def main():
     parser.add_argument("--checkpoints", nargs="+", required=True,
                         help="Paths to checkpoint files to ensemble")
     parser.add_argument("--manifest", required=True)
-    parser.add_argument("--norm-stats", required=True)
+    parser.add_argument("--norm-stats", default=None,
+                        help="Deprecated: per-dataset norm stats are no longer used. "
+                             "ImageNet normalization is now the default. Argument kept for "
+                             "back-compat with old commands; value is ignored if provided.")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--no-ema", action="store_true")
     parser.add_argument("--tta", action="store_true")

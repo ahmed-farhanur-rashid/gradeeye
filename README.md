@@ -1,7 +1,9 @@
 # GradeEye — Diabetic Retinopathy Grading Pipeline
 
-5-class (ICDR 0-4) diabetic retinopathy grading: ConvNeXt-Tiny backbone +
-CBAM attention (last 2 stages) + CORN ordinal regression head.
+5-class (ICDR 0-4) diabetic retinopathy grading: backbones (ConvNeXt-Tiny /
+SwinV2-CR-Tiny@384 / EfficientNetV2-S) + CBAM attention (last 2 stages)
++ CORN ordinal regression head + optional 4th-channel vessel segmentation
+mask (Option A).
 
 **Every dataset used in this project is validated as exactly 5-class
 (0=No DR, 1=Mild, 2=Moderate, 3=Severe, 4=Proliferative DR) at multiple
@@ -38,45 +40,62 @@ python scripts/preprocess_all.py
 # 5. Build splits from PROCESSED manifests
 python scripts/build_splits.py --dataset all
 
-# 6. Compute per-source normalization stats (on preprocessed images)
-python scripts/compute_norm_stats.py --dataset all
+# 6. (Optional) Pre-compute vessel segmentation masks for Option A.
+#    Generates data/processed/segmentation/{eyepacs,aptos,messidor2}/*.png.
+#    Skip if not using full_method_convnext_seg.yaml.
+python scripts/precompute_seg_masks.py --datasets eyepacs aptos messidor2
+
+#    If DRIVE is at data/drive/, the U-Net will be fine-tuned on DRIVE
+#    for 5 epochs first. Otherwise random-init weights (masks will be
+#    noise but the pipeline still works end-to-end for demonstration).
 
 # 7. Train (pick a run config — see configs/)
 # Note: To retrain a model from scratch, first clear its checkpoints/logs:
-# rm -rf saved/checkpoints/full_method* saved/logs/full_method*
-python scripts/train.py --config configs/full_method.yaml
-python scripts/train.py --config configs/baseline.yaml
-python scripts/train.py --config configs/ablation_ce_weighted_cbam.yaml
-python scripts/train.py --config configs/ensemble_effnetv2.yaml
+# rm -rf saved/checkpoints/<run_name>* saved/logs/<run_name>*
+
+# Main: ConvNeXt-Tiny baseline (fastest to converge)
+python scripts/train.py --config configs/full_method_convnext.yaml
+
+# Main: SwinV2-CR-Tiny@384 (transformer architecture)
+python scripts/train.py --config configs/full_method_swint.yaml
+
+# Ablation: Option A segmentation added (4-channel input)
+python scripts/train.py --config configs/full_method_convnext_seg.yaml
+
+# Ablations (run after the main runs, only need a few)
+python scripts/train.py --config configs/baseline_convnext.yaml
+python scripts/train.py --config configs/ablation_ce_weighted_cbam_convnext.yaml
 
 # 8. Evaluate a single model checkpoint on any split (use --tta for Test-Time Augmentation)
-# Evaluate ConvNeXt-Tiny (full_method) on APTOS test:
+# Note: --norm-stats is deprecated; ImageNet normalization is now the default.
+# Evaluate ConvNeXt-Tiny on APTOS test:
 python src/eval/evaluate.py \
-    --checkpoint saved/checkpoints/full_method_best.pt \
+    --checkpoint saved/checkpoints/full_method_convnext_best.pt \
     --manifest data/splits/aptos_test.csv \
-    --norm-stats data/processed/aptos_norm_stats.json \
     --tta
 
-# Evaluate ConvNeXt-Tiny (full_method) on Messidor-2 (external validation):
+# Evaluate ConvNeXt-Tiny on Messidor-2 (external validation):
 python src/eval/evaluate.py \
-    --checkpoint saved/checkpoints/full_method_best.pt \
+    --checkpoint saved/checkpoints/full_method_convnext_best.pt \
     --manifest data/splits/messidor2_test.csv \
-    --norm-stats data/processed/messidor2_norm_stats.json \
     --tta
 
-# Evaluate EfficientNetV2-S (ensemble partner) on APTOS test:
+# Evaluate the segmentation variant on APTOS test:
 python src/eval/evaluate.py \
-    --checkpoint saved/checkpoints/ensemble_effnetv2_best.pt \
+    --checkpoint saved/checkpoints/full_method_convnext_seg_best.pt \
     --manifest data/splits/aptos_test.csv \
-    --norm-stats data/processed/aptos_norm_stats.json \
     --tta
 
-# Evaluate EfficientNetV2-S (ensemble partner) on Messidor-2 (external validation):
-python src/eval/evaluate.py \
-    --checkpoint saved/checkpoints/ensemble_effnetv2_best.pt \
-    --manifest data/splits/messidor2_test.csv \
-    --norm-stats data/processed/messidor2_norm_stats.json \
+# 9. Ensemble evaluation (combine multiple checkpoints, average class probs)
+python scripts/ensemble_evaluate.py \
+    --checkpoints saved/checkpoints/full_method_convnext_best.pt \
+                  saved/checkpoints/full_method_swint_best.pt \
+    --manifest data/splits/aptos_test.csv \
     --tta
+
+# 10. (Optional) Probe max batch size for your GPU before a real run
+python scripts/probe_batch_size.py --arch swin_tiny_patch4_window7_384
+```
 
 # 9. Ensemble evaluation (the paper's headline number — average probabilities across models)
 # APTOS test:

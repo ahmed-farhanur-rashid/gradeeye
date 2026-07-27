@@ -1,9 +1,9 @@
-# Ablation run: plain CE + inverse-frequency class weighting, WITH CBAM.
-# Holds attention constant vs. full_method and only swaps the
-# loss/output head (CE vs CORN) -- isolates CORN's specific contribution
-# from CBAM's contribution.
+# Ablation: plain CE + inverse-frequency class weighting, WITH CBAM, on
+# ConvNeXt-Tiny. Holds attention constant vs. full_method and only swaps
+# the loss/output head (CE vs CORN) -- isolates CORN's specific
+# contribution from CBAM's contribution.
 
-run_name: "ablation_ce_weighted_cbam"
+run_name: "ablation_ce_weighted_cbam_convnext"
 checkpoint_dir: "saved/checkpoints"
 log_dir: "saved/logs"
 ema_decay: 0.999
@@ -13,18 +13,19 @@ use_class_weighting: true
 use_mixup: false
 
 model:
+  arch: "convnext_tiny"
   pretrained: true
   use_cbam: true
   cbam_num_stages: 2
   num_thresholds: 4
   head_hidden_dim: 512
   dropout: 0.3
+  channels_last: true
 
 phases:
   phase1_frozen:
     manifest_train: "data/splits/eyepacs_train.csv"
     manifest_val: "data/splits/eyepacs_val.csv"
-    norm_stats: "data/processed/eyepacs_norm_stats.json"
     freeze_backbone: true
     aug_strength: "light"
     batch_size: 64
@@ -36,7 +37,6 @@ phases:
   phase2_finetune:
     manifest_train: "data/splits/eyepacs_train.csv"
     manifest_val: "data/splits/eyepacs_val.csv"
-    norm_stats: "data/processed/eyepacs_norm_stats.json"
     freeze_backbone: false
     aug_strength: "light"
     batch_size: 32
@@ -48,11 +48,10 @@ phases:
   phase3_aptos:
     manifest_train: "data/splits/aptos_train.csv"
     manifest_val: "data/splits/aptos_val.csv"
-    norm_stats: "data/processed/aptos_norm_stats.json"
-    freeze_backbone: false
+    freeze_backbone_only: true
     aug_strength: "heavy"
     batch_size: 32
     num_epochs: 15
     head_lr: 0.00005
-    backbone_lr: 0.000005
+    backbone_lr: 0.0
     scheduler: "plateau"

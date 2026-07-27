@@ -115,7 +115,10 @@ class TestEMAReset:
                     f"Shadow[{key}] doesn't match model after reset"
 
     def test_reset_restarts_warmup_counter(self):
-        """After reset(), updates counter should be 0."""
+        """After reset(), updates counter is reset to -warmup_floor_updates
+        (default -200), not 0, so EMA tracks the live model with low decay
+        for the next ~200 updates. This prevents weights/BN-stats mismatch
+        after a phase transition for BN-heavy backbones (EffNetV2)."""
         model = SimpleModel()
         ema = ModelEMA(model, decay=0.999)
 
@@ -124,7 +127,8 @@ class TestEMAReset:
         assert ema.updates == 100
 
         ema.reset(model)
-        assert ema.updates == 0, f"Expected updates=0 after reset, got {ema.updates}"
+        # Negative offset by design — see ema.py reset() docstring.
+        assert ema.updates == -200, f"Expected updates=-200 after reset, got {ema.updates}"
 
     def test_reset_enables_fast_tracking_again(self):
         """After reset, the first update should use low decay (warmup restarts)."""

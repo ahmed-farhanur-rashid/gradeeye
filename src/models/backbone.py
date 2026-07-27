@@ -1,28 +1,41 @@
 """
 Backbone feature extractors via timm.
 
-Supports ConvNeXt-Tiny (primary, plan Section 4) and EfficientNetV2-S
-(ensemble member, plan_extension Section 2).
+Supports ConvNeXt-Tiny, EfficientNetV2-S, and Swin-Tiny@384 (plan Section 4 /
+Section 6). All backbones expose the same contract:
+  - .out_channels: list[int]  (shallow -> deep)
+  - forward(x) -> list[Tensor]  (per-stage feature maps, shallow -> deep)
 
-All backbones expose the same contract:
-  - .out_channels: list[int]  (shallow → deep)
-  - forward(x) → list[Tensor]  (per-stage feature maps, shallow → deep)
+The ARCH_REGISTRY is the single source of truth for architecture metadata.
+Adding a new architecture is a one-line change here, plus a YAML config.
 """
+from dataclasses import dataclass
+from typing import Optional
+
 import timm
 import torch.nn as nn
+
+
+@dataclass(frozen=True)
+class ArchSpec:
+    """Per-architecture metadata used by training/inference plumbing."""
+    timm_name: str                 # timm.create_model name
+    channels_last: bool = False    # whether to use channels_last memory format
+    supports_cbam: bool = True     # whether CBAM insertion makes architectural sense
+    needs_img_size_kwarg: bool = False  # whether timm requires img_size for this arch
 
 
 class TimmBackbone(nn.Module):
     """Generic timm features_only wrapper. Exposes per-stage feature maps
     for CBAM insertion and reports channel counts for downstream modules."""
 
-    def __init__(self, arch: str, pretrained: bool = True):
+    def __init__(self, arch: str, pretrained: bool = True, img_size: int | None = None,
+                 in_chans: int = 3):
         super().__init__()
-        self.model = timm.create_model(
-            arch,
-            pretrained=pretrained,
-            features_only=True,
-        )
+        kwargs = dict(pretrained=pretrained, features_only=True, in_chans=in_chans)
+        if img_size is not None:
+            kwargs["img_size"] = (img_size, img_size)
+        self.model = timm.create_model(arch, **kwargs)
         self.feature_info = self.model.feature_info
         self.out_channels = [info["num_chs"] for info in self.feature_info]
 
@@ -31,18 +44,59 @@ class TimmBackbone(nn.Module):
         return self.model(x)
 
 
-# Supported architectures — add new timm model names here.
-_SUPPORTED_ARCHS = {
-    "convnext_tiny": "convnext_tiny",
-    "efficientnetv2_s": "tf_efficientnetv2_s",
+# Single source of truth for supported architectures.
+# Add a new architecture = add one line here + create a YAML config.
+ARCH_REGISTRY: dict[str, ArchSpec] = {
+    "convnext_tiny": ArchSpec(
+        timm_name="convnext_tiny",
+        channels_last=True,   # depthwise convs benefit from channels_last
+    ),
+    "efficientnetv2_s": ArchSpec(
+        timm_name="tf_efficientnetv2_s",
+        channels_last=False,  # BN-heavy; standard contiguous works fine
+    ),
+    # SwinV2-CR-Tiny @ 384: native 384 input, modern cosine attention,
+    # better features than Swin-V1 for the same parameter budget. Used in
+    # place of Swin-Tiny because this timm version mishandles the
+    # features_only output of Swin-V1 (channels come out wrong); SwinV2-CR
+    # is well-supported in features_only mode.
+    "swin_tiny_patch4_window7_384": ArchSpec(
+        timm_name="swinv2_cr_tiny_384",
+        channels_last=False,
+        needs_img_size_kwarg=False,  # already trained at 384
+    ),
 }
 
 
-def build_backbone(pretrained: bool = True, arch: str = "convnext_tiny") -> TimmBackbone:
-    timm_name = _SUPPORTED_ARCHS.get(arch)
-    if timm_name is None:
+def get_arch_spec(arch: str) -> ArchSpec:
+    """Look up architecture metadata, raising a clear error on unknown archs."""
+    spec = ARCH_REGISTRY.get(arch)
+    if spec is None:
         raise ValueError(
             f"Unknown backbone arch: {arch!r}. "
-            f"Supported: {list(_SUPPORTED_ARCHS.keys())}"
+            f"Supported: {list(ARCH_REGISTRY.keys())}. "
+            f"Add a new entry to ARCH_REGISTRY in src/models/backbone.py to register a new architecture."
         )
-    return TimmBackbone(timm_name, pretrained=pretrained)
+    return spec
+
+
+# Backwards-compatible alias for code that imported the old dict name.
+_SUPPORTED_ARCHS = {alias: spec.timm_name for alias, spec in ARCH_REGISTRY.items()}
+
+
+def build_backbone(pretrained: bool = True, arch: str = "convnext_tiny",
+                   in_chans: int = 3, img_size: int | None = None) -> TimmBackbone:
+    """
+    in_chans: number of input channels. Default 3 (RGB). Set to 4 to accept
+              an optional 4th-channel segmentation mask concatenated to RGB.
+              timm handles in_chans != 3 by resizing the first conv weight
+              (initializes new channels as the mean of existing RGB channels,
+              so pretrained RGB features are preserved).
+    img_size: optional override of input spatial size. Required for Swin-Tiny
+              because the pretrained variant is at 224 and our preprocessing
+              produces 384x384 images.
+    """
+    spec = get_arch_spec(arch)
+    img_size_arg = img_size if spec.needs_img_size_kwarg else None
+    return TimmBackbone(spec.timm_name, pretrained=pretrained, img_size=img_size_arg,
+                        in_chans=in_chans)

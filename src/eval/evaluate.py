@@ -28,7 +28,8 @@ from src.models.dr_model import DRGradingModel
 from src.training.checkpoint import load_checkpoint
 
 
-def evaluate_checkpoint(checkpoint_path: str, manifest_csv: str, norm_stats_path: str,
+def evaluate_checkpoint(checkpoint_path: str, manifest_csv: str,
+                         norm_stats_path: str | None = None,
                          batch_size: int = 32, device: str | None = None,
                          use_ema: bool = True, use_tta: bool = False) -> dict:
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -72,10 +73,9 @@ def evaluate_checkpoint(checkpoint_path: str, manifest_csv: str, norm_stats_path
     model.to(device)
     model.eval()
 
-    with open(norm_stats_path) as f:
-        norm_stats = json.load(f)
-
-    dataset = DRDataset(manifest_csv, norm_stats, transform=build_eval_transforms())
+    # ImageNet normalization is the default in DRDataset; per-dataset stats
+    # deprecated because they undo ImageNet pretraining.
+    dataset = DRDataset(manifest_csv, transform=build_eval_transforms())
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=2)
 
     all_preds, all_labels, all_probas = [], [], []
@@ -84,6 +84,10 @@ def evaluate_checkpoint(checkpoint_path: str, manifest_csv: str, norm_stats_path
             images = images.to(device)
             if use_tta:
                 from src.eval.tta import tta_forward, tta_predict, tta_predict_probas
+                # tta_forward now returns averaged CLASS probabilities
+                # (decoded per-pass then averaged) — the variable name
+                # `avg_probas` is now a class distribution, not conditional
+                # probas. Caller code unchanged.
                 avg_probas = tta_forward(model, images, output_mode)
                 preds = tta_predict(avg_probas, output_mode)
                 probas = tta_predict_probas(avg_probas, output_mode)
@@ -120,7 +124,10 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate a DR grading checkpoint.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--manifest", required=True)
-    parser.add_argument("--norm-stats", required=True)
+    parser.add_argument("--norm-stats", default=None,
+                        help="Deprecated: per-dataset norm stats are no longer used. "
+                             "ImageNet normalization is now the default. Argument kept for "
+                             "back-compat with old commands; value is ignored if provided.")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--no-ema", action="store_true", help="Use raw weights instead of EMA shadow.")
     parser.add_argument("--tta", action="store_true", help="Enable Test-Time Augmentation")

@@ -41,12 +41,36 @@ class TestFreezeUnfreeze:
                                 head_hidden_dim=64, dropout=0.1)
         model.freeze_backbone()
 
-        for p in model.backbone.parameters():
-            assert not p.requires_grad, "Backbone params should be frozen"
+        # Non-norm backbone params frozen; BN/LN params stay trainable so
+        # the network can recalibrate normalization stats on the new domain.
+        for name, p in model.backbone.named_parameters():
+            is_norm = any(nd in name.lower() for nd in ("norm", ".bn", "_bn"))
+            assert (not p.requires_grad) == (not is_norm), (
+                f"Param {name} should be frozen iff not a norm param "
+                f"(is_norm={is_norm}, requires_grad={p.requires_grad})"
+            )
         for p in model.cbam_modules.parameters():
             assert not p.requires_grad, "CBAM params should be frozen"
         for p in model.head.parameters():
             assert p.requires_grad, "Head params should remain trainable"
+
+    def test_freeze_keeps_bn_in_train_mode(self):
+        """BN modules must stay in training mode even when the rest of the
+        backbone is frozen, so running_mean/var continue to update on the
+        new domain. Critical for BN-heavy backbones like EfficientNetV2-S."""
+        import torch.nn as nn
+        model = DRGradingModel(pretrained=False, use_cbam=True, num_thresholds=4,
+                                head_hidden_dim=64, dropout=0.1)
+        model.train()
+        model.freeze_backbone()
+        # train() override should re-flip BN submodules back to train().
+        model.train()
+        for module in model.backbone.modules():
+            if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+                assert module.training, (
+                    f"BN submodule {module} should be in training mode "
+                    f"even when backbone is frozen"
+                )
 
     def test_unfreeze_enables_all_grad(self):
         model = DRGradingModel(pretrained=False, use_cbam=True, num_thresholds=4,

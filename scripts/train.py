@@ -8,7 +8,6 @@ Usage:
     python scripts/train.py --config configs/full_method.yaml
 """
 import argparse
-import json
 import os
 import sys
 import random
@@ -56,12 +55,11 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def build_dataloaders(manifest_train, manifest_val, norm_stats_path, aug_strength, batch_size):
-    with open(norm_stats_path) as f:
-        norm_stats = json.load(f)
-
-    train_ds = DRDataset(manifest_train, norm_stats, transform=build_train_transforms(aug_strength))
-    val_ds = DRDataset(manifest_val, norm_stats, transform=build_eval_transforms())
+def build_dataloaders(manifest_train, manifest_val, aug_strength, batch_size, seg_dir=None):
+    # ImageNet normalization is the default in DRDataset; per-dataset stats
+    # were deprecated because they silently undo ImageNet pretraining.
+    train_ds = DRDataset(manifest_train, transform=build_train_transforms(aug_strength), seg_dir=seg_dir)
+    val_ds = DRDataset(manifest_val, transform=build_eval_transforms(), seg_dir=seg_dir)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
                                num_workers=NUM_DATALOADER_WORKERS,
@@ -87,13 +85,13 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
 
     manifest_train = phase_cfg["manifest_train"]
     manifest_val = phase_cfg["manifest_val"]
-    norm_stats_path = phase_cfg["norm_stats"]
     aug_strength = phase_cfg.get("aug_strength", "light")
     batch_size = phase_cfg.get("batch_size", 32)
     num_epochs = phase_cfg.get("num_epochs", 10)
+    seg_dir = phase_cfg.get("seg_dir", None)  # Option A segmentation
 
     train_loader, val_loader, train_ds = build_dataloaders(
-        manifest_train, manifest_val, norm_stats_path, aug_strength, batch_size
+        manifest_train, manifest_val, aug_strength, batch_size, seg_dir=seg_dir,
     )
 
     freeze = phase_cfg.get("freeze_backbone", False)
@@ -321,11 +319,13 @@ def main():
     val_model = build_model(config).to(device)
     if device == "cuda":
         arch = config.get("model", {}).get("arch", "convnext_tiny")
-        # channels_last helps ConvNeXt's depthwise convolutions.
+        # channels_last preference is data-driven via the ArchSpec registry
+        # in src/models/backbone.py — per-arch, not hardcoded here.
         # Use default torch.compile mode — reduce-overhead/max-autotune
         # use CUDA Graphs which pre-allocate ~8GB in private pools,
         # leaving no room for MixUp's temporary tensors.
-        if arch == "convnext_tiny":
+        from src.models.backbone import get_arch_spec
+        if get_arch_spec(arch).channels_last:
             model = model.to(memory_format=torch.channels_last)
         model = torch.compile(model)
     ema = ModelEMA(model, decay=config.get("ema_decay", 0.999))

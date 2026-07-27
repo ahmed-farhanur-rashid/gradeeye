@@ -1,0 +1,64 @@
+# Full method on Swin-Tiny backbone (384-pretrained variant).
+# Same CORN + CBAM + weighting + MixUp setup as full_method_convnext.yaml.
+# Swin-Tiny at 384x384 is heavier than ConvNeXt-Tiny, so Phase 2 batch
+# size and LRs are scaled down. Window-attention requires input divisible
+# by 28; 384 = 28*13.71 -> use the 384-pretrained variant directly.
+
+run_name: "full_method_swint"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "corn"
+use_class_weighting: true
+use_mixup: true
+
+model:
+  arch: "swin_tiny_patch4_window7_384"
+  pretrained: true
+  use_cbam: true
+  cbam_num_stages: 2
+  num_thresholds: 4
+  head_hidden_dim: 512
+  dropout: 0.4
+  channels_last: false  # Swin uses window-attention; channels_last isn't needed
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 192     # swin activations are heavier than convnext at 384
+    num_epochs: 5
+    head_lr: 0.001
+    warmup_epochs: 1
+    scheduler: "cosine"
+
+  phase2_full_training:
+    manifest_train: "data/splits/eyepacs_train.csv"
+    manifest_val: "data/splits/eyepacs_val.csv"
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 24      # Tight on 12GB at 384; will tighten further if probe shows OOM
+    num_epochs: 35
+    head_lr: 0.0000707  # sqrt-scaled from 1e-4 at bs=32 -> bs=24
+    backbone_lr: 0.00000707
+    weight_decay: 0.01
+    warmup_epochs: 2
+    scheduler: "cosine"
+    min_epochs: 10
+    overfitting_patience: 10
+
+  phase3_aptos:
+    manifest_train: "data/splits/aptos_train.csv"
+    manifest_val: "data/splits/aptos_val.csv"
+    freeze_backbone_only: true
+    aug_strength: "heavy"
+    batch_size: 16
+    num_epochs: 20
+    head_lr: 0.0001
+    backbone_lr: 0.0
+    warmup_epochs: 1
+    scheduler: "plateau"
+    overfitting_patience: 0

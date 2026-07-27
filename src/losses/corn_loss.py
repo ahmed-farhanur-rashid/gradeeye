@@ -50,12 +50,20 @@ def corn_loss(logits: torch.Tensor, labels: torch.Tensor, num_classes: int,
 
         if per_threshold_weights is not None:
             weights_k = build_sample_weights_for_threshold(eligible_labels, k, per_threshold_weights[k])
-            loss_k = loss_k * weights_k
+            # Weighted mean: sum(w*bce) / sum(w). Plain .mean() after
+            # elementwise multiply destroys the weighting because positive
+            # and negative samples contribute equally to the mean regardless
+            # of their class-frequency weights. This is what was previously
+            # causing the minority-class under-weighting in CORN runs.
+            total_loss = total_loss + (loss_k * weights_k).sum() / weights_k.sum().clamp(min=1.0)
+        else:
+            total_loss = total_loss + loss_k.mean()
 
-        total_loss = total_loss + loss_k.mean()
         num_valid_thresholds += 1
 
     if num_valid_thresholds == 0:
         return total_loss  # degenerate empty-batch edge case
 
+    # Each threshold already accumulates a (weighted) mean internally; divide
+    # by the number of valid thresholds to get the cross-threshold average.
     return total_loss / num_valid_thresholds

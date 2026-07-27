@@ -1,8 +1,8 @@
-# Baseline run: plain CE, no ordinal structure, no class weighting, no CBAM.
+# Baseline run on ConvNeXt-Tiny: plain CE, no ordinal structure, no CBAM.
 # Isolates how much the full method's gains come from architecture vs.
 # just using a strong pretrained backbone.
 
-run_name: "baseline"
+run_name: "baseline_convnext"
 checkpoint_dir: "saved/checkpoints"
 log_dir: "saved/logs"
 ema_decay: 0.999
@@ -12,6 +12,7 @@ use_class_weighting: false
 use_mixup: false
 
 model:
+  arch: "convnext_tiny"
   pretrained: true
   use_cbam: false
   num_thresholds: 4        # build_model() derives output_mode="softmax" from
@@ -20,12 +21,12 @@ model:
                             # 5-way softmax), not the 4-value CORN shape.
   head_hidden_dim: 512
   dropout: 0.3
+  channels_last: true
 
 phases:
   phase1_frozen:
     manifest_train: "data/splits/eyepacs_train.csv"
     manifest_val: "data/splits/eyepacs_val.csv"
-    norm_stats: "data/processed/eyepacs_norm_stats.json"
     freeze_backbone: true
     aug_strength: "light"
     batch_size: 64
@@ -37,7 +38,6 @@ phases:
   phase2_finetune:
     manifest_train: "data/splits/eyepacs_train.csv"
     manifest_val: "data/splits/eyepacs_val.csv"
-    norm_stats: "data/processed/eyepacs_norm_stats.json"
     freeze_backbone: false
     aug_strength: "light"
     batch_size: 32
@@ -49,11 +49,10 @@ phases:
   phase3_aptos:
     manifest_train: "data/splits/aptos_train.csv"
     manifest_val: "data/splits/aptos_val.csv"
-    norm_stats: "data/processed/aptos_norm_stats.json"
-    freeze_backbone: false
+    freeze_backbone_only: true
     aug_strength: "heavy"
     batch_size: 32
     num_epochs: 15
     head_lr: 0.00005
-    backbone_lr: 0.000005
+    backbone_lr: 0.0
     scheduler: "plateau"

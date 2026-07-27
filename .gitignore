@@ -120,6 +120,7 @@ cover/
 .vscode-test/
 no_upload/
 .SKILLS/
+context.md
 
 # ==============================================================================
 #  OS GENERATED FILES

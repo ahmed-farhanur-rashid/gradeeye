@@ -14,16 +14,24 @@ class DRGradingModel(nn.Module):
     def __init__(self, pretrained: bool = True, use_cbam: bool = True,
                  cbam_num_stages: int = 2, num_thresholds: int = 4,
                  head_hidden_dim: int = 512, dropout: float = 0.3,
-                 output_mode: str = "corn", arch: str = "convnext_tiny"):
+                 output_mode: str = "corn", arch: str = "convnext_tiny",
+                 in_chans: int = 3, img_size: int = 384):
         """
-        arch: backbone architecture name (see backbone.py _SUPPORTED_ARCHS).
+        arch: backbone architecture name (see backbone.py ARCH_REGISTRY).
         use_cbam: toggle for the baseline run (plan Section 5 run matrix —
                   baseline has attention=None).
         cbam_num_stages: how many of the LAST backbone stages get CBAM
                          inserted (default 2, per plan Section 4).
+        in_chans: number of input channels. Default 3 (RGB). Set to 4 to
+                  accept an optional 4th-channel segmentation mask
+                  (Option A — pre-computed vessel masks concatenated to RGB).
+        img_size: target input spatial size; must match the preprocessing
+                  pipeline. Swin-Tiny needs this explicitly (its pretrained
+                  variant is 224, our preprocessing is 384).
         """
         super().__init__()
-        self.backbone = build_backbone(pretrained=pretrained, arch=arch)
+        self.backbone = build_backbone(pretrained=pretrained, arch=arch,
+                                       in_chans=in_chans, img_size=img_size)
         num_stages = len(self.backbone.out_channels)
         cbam_num_stages = min(cbam_num_stages, num_stages)
 
@@ -52,6 +60,15 @@ class DRGradingModel(nn.Module):
         super().train(mode)
         if getattr(self, "_backbone_frozen", False):
             self.backbone.eval()
+            # Keep BatchNorm submodules in train mode so running_mean/var
+            # continue to update on the new domain. Without this, BN keeps
+            # ImageNet-calibrated stats frozen — which is fine for LayerNorm
+            # backbones (ConvNeXt/Swin) but causes the head to receive
+            # incorrectly-normalized features for BN-heavy backbones
+            # (EfficientNetV2).
+            for module in self.backbone.modules():
+                if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+                    module.train()
             if self.use_cbam:
                 self.cbam_modules.eval()
 
@@ -70,11 +87,28 @@ class DRGradingModel(nn.Module):
 
     def freeze_backbone(self):
         """
-        For Phase 1: frozen-backbone, head-only training. 
+        For Phase 1: frozen-backbone, head-only training.
         Note: We intentionally never freeze self.head here because Phase 1 is designed to train the head.
+
+        IMPORTANT: BatchNorm parameters (and running stats) stay trainable
+        even when the rest of the backbone is frozen. This is critical for
+        BN-heavy backbones like EfficientNetV2-S — the BN affine params and
+        running_mean/var were calibrated on ImageNet, but the new domain
+        (retinal images) has a different color/feature distribution. Without
+        this, BN keeps ImageNet stats frozen and the head receives
+        incorrectly-normalized features, which is the root cause of the
+        EffNetV2 stuck-at-QWK-0.0 issue in Phase 1.
+
+        LayerNorm has no running stats, so this is a no-op for ConvNeXt/Swin.
         """
-        for param in self.backbone.parameters():
-            param.requires_grad = False
+        for name, param in self.backbone.named_parameters():
+            if param.requires_grad is False:
+                continue
+            if any(nd in name.lower() for nd in ("norm", ".bn", "_bn")):
+                # Keep BN/LN parameters trainable for domain recalibration.
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
         if self.use_cbam:
             for param in self.cbam_modules.parameters():
                 param.requires_grad = False
@@ -108,6 +142,9 @@ def build_model(config: dict) -> DRGradingModel:
     Build model from a config dict (see configs/*.yaml). output_mode is
     derived from loss_type: "corn" loss needs a CORN-shaped head,
     "ce" loss needs a standard softmax-shaped head.
+
+    Set `model.in_chans: 4` in the YAML to enable Option A segmentation
+    (4th channel = pre-computed vessel mask).
     """
     model_cfg = config.get("model", {})
     output_mode = "corn" if config.get("loss_type", "corn") == "corn" else "softmax"
@@ -120,4 +157,6 @@ def build_model(config: dict) -> DRGradingModel:
         dropout=model_cfg.get("dropout", 0.3),
         output_mode=output_mode,
         arch=model_cfg.get("arch", "convnext_tiny"),
+        in_chans=model_cfg.get("in_chans", 3),
+        img_size=model_cfg.get("img_size", 384),
     )

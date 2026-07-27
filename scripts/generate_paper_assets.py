@@ -1,15 +1,18 @@
 """
 Generate all conference-paper figures and tables from trained checkpoints
-and logs. Run this after training all 3 run-matrix configs
-(baseline / ablation_ce_weighted_cbam / full_method).
+and logs. Run this after training all configs (see configs/).
 
 Usage:
     python scripts/generate_paper_assets.py \
-        --checkpoints saved/checkpoints/baseline_best.pt saved/checkpoints/ablation_ce_weighted_cbam_best.pt saved/checkpoints/full_method_best.pt \
-        --test-manifest data/splits/aptos_test.csv \
-        --norm-stats data/processed/aptos_norm_stats.json
+        --checkpoints saved/checkpoints/baseline_convnext_best.pt \
+                      saved/checkpoints/full_method_convnext_best.pt \
+                      saved/checkpoints/full_method_swint_best.pt \
+        --test-manifest data/splits/aptos_test.csv
 
 Outputs land in paper_assets/{figures,tables}/.
+
+Note: --norm-stats is deprecated. ImageNet normalization is now used by
+default. The argument is accepted but ignored if provided.
 """
 import argparse
 import json
@@ -39,7 +42,9 @@ def main():
                          help="Paths to *_best.pt checkpoints, one per run.")
     parser.add_argument("--test-manifest", required=True,
                          help="Manifest CSV to evaluate all runs on (typically aptos_test.csv).")
-    parser.add_argument("--norm-stats", required=True)
+    parser.add_argument("--norm-stats", default=None,
+                        help="Deprecated: ImageNet normalization is now the default. "
+                             "Argument accepted but ignored if provided.")
     parser.add_argument("--log-dir", default="saved/logs")
     parser.add_argument("--out-dir", default="paper_assets")
     parser.add_argument("--manifests-for-distribution", nargs="*", default=[],
@@ -75,7 +80,7 @@ def main():
         run_name = extract_run_name(ckpt_path)
         print(f"\nEvaluating {run_name} on {args.test_manifest}...")
 
-        result = evaluate_checkpoint(ckpt_path, args.test_manifest, args.norm_stats)
+        result = evaluate_checkpoint(ckpt_path, args.test_manifest, args.norm_stats)  # args.norm_stats ignored (ImageNet default)
         all_results[run_name] = result["metrics"]
         per_run_eval_output[run_name] = result
 
@@ -136,9 +141,8 @@ def main():
         model.load_state_dict(checkpoint[state_key])
         model.to(device).eval()
 
-        with open(args.norm_stats) as f:
-            norm_stats = json.load(f)
-        dataset = DRDataset(args.test_manifest, norm_stats, transform=build_eval_transforms())
+        # ImageNet normalization is the default; per-dataset stats deprecated.
+        dataset = DRDataset(args.test_manifest, transform=build_eval_transforms())
         loader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=2)
 
         all_labels, all_probas = [], []
