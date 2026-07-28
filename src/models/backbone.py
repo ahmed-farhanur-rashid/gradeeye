@@ -55,15 +55,16 @@ ARCH_REGISTRY: dict[str, ArchSpec] = {
         timm_name="tf_efficientnetv2_s",
         channels_last=False,  # BN-heavy; standard contiguous works fine
     ),
-    # SwinV2-CR-Tiny @ 384: native 384 input, modern cosine attention,
-    # better features than Swin-V1 for the same parameter budget. Used in
-    # place of Swin-Tiny because this timm version mishandles the
-    # features_only output of Swin-V1 (channels come out wrong); SwinV2-CR
-    # is well-supported in features_only mode.
+    # SwinV2-Tiny @ 256: timm ships pretrained weights as
+    # `swinv2_tiny_window8_256.ms_in1k`. The _ns and _cr variants @ 384
+    # don't have downloadable weights in the registry this environment
+    # can fetch, so we use the standard 256 SwinV2 (window8). Training
+    # input must be 256x256 — set `model.img_size: 256` in the YAML and
+    # the train pipeline handles the resize from 384-preprocessed images.
     "swin_tiny_patch4_window7_384": ArchSpec(
-        timm_name="swinv2_cr_tiny_384",
+        timm_name="swinv2_tiny_window8_256",
         channels_last=False,
-        needs_img_size_kwarg=False,  # already trained at 384
+        needs_img_size_kwarg=False,
     ),
 }
 

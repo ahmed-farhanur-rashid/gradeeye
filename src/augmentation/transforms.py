@@ -25,9 +25,14 @@ import torch
 from torchvision import transforms as T
 
 
-def build_train_transforms(strength: str = "light") -> T.Compose:
+def build_train_transforms(strength: str = "light", img_size: int | None = None) -> T.Compose:
     """
     strength: "light" (EyePACS phase) or "heavy" (APTOS fine-tune phase).
+    img_size: if set, resize the (already preprocessed) input to this size
+              first. Useful when the backbone's native input resolution
+              differs from preprocessing (e.g. SwinV2-Tiny@256 wants 256,
+              but preprocessing writes 384 — without a resize, the model
+              immediately asserts on input size mismatch).
 
     IMPORTANT: DRDataset (src/data/datasets.py) already runs crop/color-
     correction/normalization and hands back a normalized float32 CHW
@@ -53,7 +58,12 @@ def build_train_transforms(strength: str = "light") -> T.Compose:
         translate_frac = 0.06
         brightness, contrast = 0.20, 0.20
 
-    aug_list = [
+    aug_list = []
+    if img_size is not None:
+        # Must run BEFORE rotation/affine so the random crop/scale ops
+        # operate on the right tensor size.
+        aug_list.append(T.Resize((img_size, img_size), antialias=True))
+    aug_list.extend([
         T.RandomRotation(degrees=180),  # sampling +-180 covers the full 0-360 range
         T.RandomHorizontalFlip(p=0.5),
         T.RandomVerticalFlip(p=0.5),
@@ -64,7 +74,7 @@ def build_train_transforms(strength: str = "light") -> T.Compose:
         ),
         T.ColorJitter(brightness=brightness, contrast=contrast),
         T.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
-    ]
+    ])
 
     if strength == "heavy":
         # Small-area erasing is safe for fundus: won't erase the entire
@@ -74,9 +84,12 @@ def build_train_transforms(strength: str = "light") -> T.Compose:
     return T.Compose(aug_list)
 
 
-def build_eval_transforms() -> T.Compose:
-    """No augmentation for val/test — deterministic evaluation. Identity pass-through."""
-    return T.Compose([])
+def build_eval_transforms(img_size: int | None = None) -> T.Compose:
+    """No augmentation for val/test — deterministic evaluation. Identity pass-through.
+    If `img_size` is set, resize to that spatial size before returning."""
+    if img_size is None:
+        return T.Compose([])
+    return T.Compose([T.Resize((img_size, img_size), antialias=True)])
 
 
 def mixup_batch(images: torch.Tensor, labels: torch.Tensor, alpha: float = 0.2):

@@ -1,8 +1,9 @@
-# Full method on Swin-Tiny backbone (384-pretrained variant).
-# Same CORN + CBAM + weighting + MixUp setup as full_method_convnext.yaml.
-# Swin-Tiny at 384x384 is heavier than ConvNeXt-Tiny, so Phase 2 batch
-# size and LRs are scaled down. Window-attention requires input divisible
-# by 28; 384 = 28*13.71 -> use the 384-pretrained variant directly.
+# Full method on SwinV2-Tiny@256 backbone.
+# Uses swinv2_tiny_window8_256 pretrained weights (the only Swin variant
+# with downloadable pretrained weights in this timm registry). Native
+# input is 256x256; the train pipeline resizes preprocessed 384x384 images
+# down via `model.img_size: 256`. Lower input resolution means we can
+# run larger batches than ConvNeXt-Tiny.
 
 run_name: "full_method_swint"
 checkpoint_dir: "saved/checkpoints"
@@ -14,7 +15,7 @@ use_class_weighting: true
 use_mixup: true
 
 model:
-  arch: "swin_tiny_patch4_window7_384"
+  arch: "swin_tiny_patch4_window7_384"   # alias -> swinv2_tiny_window8_256
   pretrained: true
   use_cbam: true
   cbam_num_stages: 2
@@ -22,6 +23,7 @@ model:
   head_hidden_dim: 512
   dropout: 0.4
   channels_last: false  # Swin uses window-attention; channels_last isn't needed
+  img_size: 256         # backbone-native input size; train pipeline resizes to this
 
 phases:
   phase1_frozen:
@@ -29,36 +31,39 @@ phases:
     manifest_val: "data/splits/eyepacs_val.csv"
     freeze_backbone: true
     aug_strength: "light"
-    batch_size: 192     # swin activations are heavier than convnext at 384
+    batch_size: 96      # probed on 12GB: bs=96 = 7.68 GB peak (no compile); bs=128 = 10.19 GB
     num_epochs: 5
-    head_lr: 0.001
+    head_lr: 0.001      # head-only, no LR scaling needed for frozen backbone
     warmup_epochs: 1
     scheduler: "cosine"
+    img_size: 256
 
   phase2_full_training:
     manifest_train: "data/splits/eyepacs_train.csv"
     manifest_val: "data/splits/eyepacs_val.csv"
     freeze_backbone: false
     aug_strength: "light"
-    batch_size: 24      # Tight on 12GB at 384; will tighten further if probe shows OOM
+    batch_size: 48      # probed on 12GB: bs=48 = 5.53 GB peak; bs=64 = 7.30 GB
     num_epochs: 35
-    head_lr: 0.0000707  # sqrt-scaled from 1e-4 at bs=32 -> bs=24
-    backbone_lr: 0.00000707
+    head_lr: 0.0000866  # sqrt-scaled from 1e-4 at bs=32 -> bs=48
+    backbone_lr: 0.00000866
     weight_decay: 0.01
     warmup_epochs: 2
     scheduler: "cosine"
     min_epochs: 10
     overfitting_patience: 10
+    img_size: 256
 
   phase3_aptos:
     manifest_train: "data/splits/aptos_train.csv"
     manifest_val: "data/splits/aptos_val.csv"
     freeze_backbone_only: true
     aug_strength: "heavy"
-    batch_size: 16
+    batch_size: 32
     num_epochs: 20
     head_lr: 0.0001
     backbone_lr: 0.0
     warmup_epochs: 1
     scheduler: "plateau"
     overfitting_patience: 0
+    img_size: 256

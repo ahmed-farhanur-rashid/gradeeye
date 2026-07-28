@@ -25,8 +25,9 @@ from src.models.dr_model import DRGradingModel
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def _try_one(arch: str, in_chans: int, batch_size: int, frozen: bool):
-    """Try a single fwd+bwd at the given bs. Returns (ok: bool, peak_gb: float)."""
+def _try_one(arch: str, in_chans: int, batch_size: int, frozen: bool, img_size: int):
+    """Try a single fwd+bwd at the given bs. Returns (ok: bool, peak_gb: float).
+    img_size: backbone-native input size (384 for ConvNeXt, 256 for Swin)."""
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
     try:
@@ -39,14 +40,25 @@ def _try_one(arch: str, in_chans: int, batch_size: int, frozen: bool):
             num_thresholds=4,
             head_hidden_dim=512,
             dropout=0.4,
+            img_size=img_size,
         ).to(DEVICE)
+        # Apply channels_last if the arch's spec says so (matches train.py).
+        from src.models.backbone import get_arch_spec
+        if get_arch_spec(arch).channels_last:
+            model = model.to(memory_format=torch.channels_last)
+        # NOTE: torch.compile is NOT applied here — the probe is meant to
+        # give a quick upper bound; compile-time memory pools vary across
+        # inductor versions and can mask the real fit. Train.py still uses
+        # compile in production.
         if frozen:
             model.freeze_backbone()
         opt = torch.optim.AdamW(
             [p for p in model.parameters() if p.requires_grad],
             lr=1e-4,
         )
-        x = torch.randn(batch_size, in_chans, 384, 384, device=DEVICE)
+        x = torch.randn(batch_size, in_chans, img_size, img_size, device=DEVICE)
+        if get_arch_spec(arch).channels_last:
+            x = x.to(memory_format=torch.channels_last)
         y = torch.randint(0, 5, (batch_size,), device=DEVICE)
 
         # Match training-time autocast behavior so the probe is representative.
@@ -68,17 +80,17 @@ def _try_one(arch: str, in_chans: int, batch_size: int, frozen: bool):
         raise
 
 
-def probe_arch(arch: str, in_chans: int = 3):
+def probe_arch(arch: str, in_chans: int = 3, img_size: int = 384):
     """Walk batch sizes 4, 8, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384 for both
     frozen-backbone and unfrozen scenarios; report the largest size that fits."""
-    print(f"\n=== {arch} (in_chans={in_chans}) ===")
+    print(f"\n=== {arch} (in_chans={in_chans}, img_size={img_size}) ===")
     sizes = [4, 8, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384]
     for frozen in (True, False):
         phase = "Phase 1 frozen" if frozen else "Phase 2 unfrozen"
         print(f"\n  {phase}:")
         best = None
         for bs in sizes:
-            ok, peak = _try_one(arch, in_chans, bs, frozen=frozen)
+            ok, peak = _try_one(arch, in_chans, bs, frozen=frozen, img_size=img_size)
             status = "OK" if ok else "OOM"
             print(f"    bs={bs:<4}  {status:<4}  peak={peak:.2f} GB")
             if ok:
@@ -113,7 +125,8 @@ def main():
 
     for arch in archs:
         try:
-            probe_arch(arch, in_chans=args.in_chans)
+            img_size = 256 if "swin" in arch else 384
+            probe_arch(arch, in_chans=args.in_chans, img_size=img_size)
         except Exception as e:
             print(f"  Skipped {arch}: {e}")
 

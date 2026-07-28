@@ -55,11 +55,11 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def build_dataloaders(manifest_train, manifest_val, aug_strength, batch_size, seg_dir=None):
+def build_dataloaders(manifest_train, manifest_val, aug_strength, batch_size, seg_dir=None, img_size=None):
     # ImageNet normalization is the default in DRDataset; per-dataset stats
     # were deprecated because they silently undo ImageNet pretraining.
-    train_ds = DRDataset(manifest_train, transform=build_train_transforms(aug_strength), seg_dir=seg_dir)
-    val_ds = DRDataset(manifest_val, transform=build_eval_transforms(), seg_dir=seg_dir)
+    train_ds = DRDataset(manifest_train, transform=build_train_transforms(aug_strength, img_size=img_size), seg_dir=seg_dir)
+    val_ds = DRDataset(manifest_val, transform=build_eval_transforms(img_size=img_size), seg_dir=seg_dir)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
                                num_workers=NUM_DATALOADER_WORKERS,
@@ -89,9 +89,12 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     batch_size = phase_cfg.get("batch_size", 32)
     num_epochs = phase_cfg.get("num_epochs", 10)
     seg_dir = phase_cfg.get("seg_dir", None)  # Option A segmentation
+    # img_size: phase override > model-level default
+    img_size = phase_cfg.get("img_size") or run_cfg.get("model", {}).get("img_size")
 
     train_loader, val_loader, train_ds = build_dataloaders(
-        manifest_train, manifest_val, aug_strength, batch_size, seg_dir=seg_dir,
+        manifest_train, manifest_val, aug_strength, batch_size,
+        seg_dir=seg_dir, img_size=img_size,
     )
 
     freeze = phase_cfg.get("freeze_backbone", False)

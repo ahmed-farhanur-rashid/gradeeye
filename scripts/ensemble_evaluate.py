@@ -62,6 +62,8 @@ def load_model_from_checkpoint(checkpoint_path: str, device: str, use_ema: bool 
         dropout=model_cfg.get("dropout", 0.3),
         output_mode=output_mode,
         arch=model_cfg.get("arch", "convnext_tiny"),
+        in_chans=model_cfg.get("in_chans", 3),
+        img_size=model_cfg.get("img_size", 384),
     )
 
     if use_ema and checkpoint.get("ema_state_dict") is not None:
@@ -116,7 +118,8 @@ def evaluate_ensemble(checkpoint_paths: list[str], manifest_csv: str,
                       norm_stats_path: str | None = None,
                       batch_size: int = 32,
                       device: str | None = None, use_ema: bool = True,
-                      use_tta: bool = False) -> dict:
+                      use_tta: bool = False, seg_dir: str | None = None,
+                      img_size: int | None = None) -> dict:
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load all models
@@ -129,8 +132,27 @@ def evaluate_ensemble(checkpoint_paths: list[str], manifest_csv: str,
         arch = config.get("model", {}).get("arch", "convnext_tiny")
         print(f"  Loaded: {os.path.basename(path)} ({arch})")
 
+    # If any model has in_chans=4 (Option A segmentation), require seg_dir.
+    needs_seg = any(c.get("model", {}).get("in_chans", 3) > 3 for c in configs)
+    if needs_seg and seg_dir is None:
+        # Default to per-dataset seg dir if it exists
+        import os as _os
+        candidates = [
+            f"data/processed/segmentation/{_os.path.basename(manifest_csv).split('_')[0]}",
+        ]
+        for c in candidates:
+            if _os.path.isdir(c):
+                seg_dir = c
+                print(f"  Using seg_dir: {c}")
+                break
+        if seg_dir is None:
+            raise ValueError(
+                "Model was trained with in_chans=4 (segmentation) but no seg_dir "
+                "was provided AND no default candidate exists. Pass --seg-dir."
+            )
+
     # Build dataloader (ImageNet normalization is the default in DRDataset)
-    dataset = DRDataset(manifest_csv, transform=build_eval_transforms())
+    dataset = DRDataset(manifest_csv, transform=build_eval_transforms(img_size=img_size), seg_dir=seg_dir)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=2)
 
     all_preds, all_labels, all_probas = [], [], []
@@ -172,12 +194,18 @@ def main():
     parser.add_argument("--no-ema", action="store_true")
     parser.add_argument("--tta", action="store_true")
     parser.add_argument("--log-dir", default="saved/logs")
+    parser.add_argument("--img-size", type=int, default=None,
+                        help="Override input size (e.g. 256 for Swin@256). "
+                             "Per-model img_size from each checkpoint's config is the default.")
+    parser.add_argument("--seg-dir", default=None,
+                        help="Segmentation mask dir for Option A (4-ch) models.")
     args = parser.parse_args()
 
     print(f"\nEnsemble of {len(args.checkpoints)} models:")
     result = evaluate_ensemble(
         args.checkpoints, args.manifest, args.norm_stats,
         batch_size=args.batch_size, use_ema=not args.no_ema, use_tta=args.tta,
+        seg_dir=args.seg_dir, img_size=args.img_size,
     )
 
     print(f"\nEvaluated {result['n_samples']} samples from {args.manifest}")

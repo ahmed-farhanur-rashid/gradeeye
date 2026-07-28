@@ -29,11 +29,12 @@ phases:
     manifest_val: "data/splits/eyepacs_val.csv"
     freeze_backbone: true
     aug_strength: "light"
-    batch_size: 384
+    batch_size: 96      # probed on 12GB: bs=96 = 9.22 GB peak; bs=128 OOM
     num_epochs: 5
     head_lr: 0.001
     warmup_epochs: 1
     scheduler: "cosine"
+    img_size: 384
 
   phase2_full_training:
     manifest_train: "data/splits/eyepacs_train.csv"
@@ -49,6 +50,7 @@ phases:
     scheduler: "cosine"
     min_epochs: 10
     overfitting_patience: 10
+    img_size: 384
 
   phase3_aptos:
     manifest_train: "data/splits/aptos_train.csv"
@@ -62,3 +64,4 @@ phases:
     warmup_epochs: 1
     scheduler: "plateau"
     overfitting_patience: 0
+    img_size: 384

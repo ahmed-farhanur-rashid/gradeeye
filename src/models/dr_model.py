@@ -75,13 +75,25 @@ class DRGradingModel(nn.Module):
     def forward(self, x):
         stage_features = self.backbone(x)  # list of feature maps, shallow -> deep
 
+        # CRITICAL: Swin/transformer backbones return features in NHWC layout
+        # (B, H, W, C), not NCHW (B, C, H, W). CBAM expects NCHW (its
+        # AdaptiveAvgPool2d operates on dim=2 assuming channel layout).
+        # Without this permute, GAP reduces the spatial 16x16 to 1x1 but
+        # leaves "channels=16" — CBAM then crashes with a channel mismatch
+        # error. ConvNeXt features_only outputs are already NCHW so this is
+        # a no-op for ConvNeXt.
         if self.use_cbam:
             for stage_idx, feat in enumerate(stage_features):
                 key = str(stage_idx)
                 if key in self.cbam_modules:
+                    if feat.dim() == 4 and feat.shape[1] not in self.backbone.out_channels:
+                        # NHWC -> NCHW
+                        feat = feat.permute(0, 3, 1, 2).contiguous()
                     stage_features[stage_idx] = self.cbam_modules[key](feat)
 
         final_features = stage_features[-1]
+        if final_features.dim() == 4 and final_features.shape[1] not in self.backbone.out_channels:
+            final_features = final_features.permute(0, 3, 1, 2).contiguous()
         logits = self.head(final_features)  # (B, num_thresholds) CORN logits
         return logits
 

@@ -36,7 +36,7 @@ phases:
     seg_dir: "data/processed/segmentation/eyepacs"
     freeze_backbone: true
     aug_strength: "light"
-    batch_size: 384
+    batch_size: 96      # probed on 12GB: bs=96 = 9.22 GB peak; bs=128 OOM
     num_epochs: 5
     head_lr: 0.001
     warmup_epochs: 1
