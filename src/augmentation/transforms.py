@@ -56,7 +56,7 @@ def build_train_transforms(strength: str = "light", img_size: int | None = None)
     else:  # heavy
         zoom_range = (0.90, 1.10)
         translate_frac = 0.06
-        brightness, contrast = 0.20, 0.20
+        brightness, contrast = 0.15, 0.15
 
     aug_list = []
     if img_size is not None:
@@ -73,13 +73,20 @@ def build_train_transforms(strength: str = "light", img_size: int | None = None)
             scale=zoom_range,
         ),
         T.ColorJitter(brightness=brightness, contrast=contrast),
-        T.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
     ])
 
-    if strength == "heavy":
-        # Small-area erasing is safe for fundus: won't erase the entire
-        # lesion but forces the model to use distributed features.
-        aug_list.append(T.RandomErasing(p=0.3, scale=(0.02, 0.08), ratio=(0.5, 2.0)))
+    # NOTE: GaussianBlur and RandomErasing were intentionally NOT included
+    # here. The training tensors are ALREADY ImageNet-normalized (mean-subtracted,
+    # divided by std) by the time these transforms run, so:
+    #   - GaussianBlur on normalized tensors applies wrong-scale smoothing
+    #     and effectively injects noise (blurring a mean-centered image changes
+    #     the semantic content).
+    #   - RandomErasing on normalized tensors creates large negative-valued
+    #     patches (mean-subtracted values) that don't correspond to any real
+    #     fundus appearance, harming generalization.
+    # Empirical test (revert 2026-07-28): adding either produced a 0.16 QWK
+    # drop on Messidor2 zero-shot (0.61 -> 0.45). The augmented training
+    # looked healthy on EyePACS val but failed to generalize.
 
     return T.Compose(aug_list)
 

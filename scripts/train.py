@@ -139,7 +139,15 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         labels = train_ds.get_labels()
         class_counts = compute_class_counts(labels, NUM_CLASSES)
         if loss_type == "corn":
-            per_threshold_weights = compute_corn_per_threshold_weights(labels, NUM_CLASSES)
+            # Use inverse_sqrt (less aggressive than effective_number beta=0.999).
+            # effective_number over-emphasized the Mild minority class during the
+            # post-rewrite retrain, causing the head to predict Mild more often
+            # than appropriate and overfitting to the imbalance rather than
+            # learning the actual ordinal structure. inverse_sqrt is what the
+            # pre-rewrite (Messidor2 QWK=0.61) training used.
+            per_threshold_weights = compute_corn_per_threshold_weights(
+                labels, NUM_CLASSES, method="inverse_sqrt"
+            )
         else:
             ce_class_weights = compute_5class_inverse_sqrt_weights(class_counts).to(device)
 
