@@ -121,6 +121,7 @@ cover/
 no_upload/
 .SKILLS/
 context.md
+CLAUDE_CONTEXT.md
 
 # ==============================================================================
 #  OS GENERATED FILES

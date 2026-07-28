@@ -51,17 +51,29 @@ phases:
     min_epochs: 10
     overfitting_patience: 10
     img_size: 384
+    use_sqrt_sampler: true   # sqrt-frequency WeightedRandomSampler — gives Mild/Moderate
+                             # more draw probability per epoch so they get actual gradient
+                             # signal. Stacks with CORN's per-threshold inverse_sqrt loss
+                             # weights (different problem: exposure vs. magnitude).
 
   phase3_aptos:
     manifest_train: "data/splits/aptos_train.csv"
     manifest_val: "data/splits/aptos_val.csv"
-    freeze_backbone_only: true  # keep pretrained backbone frozen; adapt CBAM + head
+    freeze_backbone: false        # full fine-tune — APTOS distribution differs from EyePACS
+                                  # enough that backbone adaptation matters here.
+                                  # OLD working config (full_method_best.pt, Messidor2 QWK=0.61)
+                                  # used freeze_backbone:false here. The current
+                                  # freeze_backbone_only:true froze the backbone entirely
+                                  # and dropped APTOS QWK by ~0.07 and Messidor2 QWK by ~0.16.
     aug_strength: "heavy"
     batch_size: 32
     num_epochs: 20
     head_lr: 0.0001
-    backbone_lr: 0.0            # explicit: backbone is fully frozen in this phase
+    backbone_lr: 0.000001        # very small backbone LR — gentle adaptation, not catastrophic forgetting
     warmup_epochs: 1
     scheduler: "plateau"
     overfitting_patience: 0
     img_size: 384
+    use_sqrt_sampler: true   # APTOS has Severe=5%, Proliferative=8% — same Mild starvation
+                             # problem as EyePACS but in a smaller dataset, so the effect is
+                             # even more pronounced. Sampler helps here.

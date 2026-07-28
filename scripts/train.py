@@ -55,13 +55,36 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def build_dataloaders(manifest_train, manifest_val, aug_strength, batch_size, seg_dir=None, img_size=None):
+def build_dataloaders(manifest_train, manifest_val, aug_strength, batch_size, seg_dir=None, img_size=None, use_sqrt_sampler=False):
     # ImageNet normalization is the default in DRDataset; per-dataset stats
     # were deprecated because they silently undo ImageNet pretraining.
     train_ds = DRDataset(manifest_train, transform=build_train_transforms(aug_strength, img_size=img_size), seg_dir=seg_dir)
     val_ds = DRDataset(manifest_val, transform=build_eval_transforms(img_size=img_size), seg_dir=seg_dir)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+    sampler = None
+    shuffle = True
+    if use_sqrt_sampler:
+        # sqrt-frequency WeightedRandomSampler: each sample's draw probability
+        # is proportional to 1/sqrt(class_count). With EyePACS class counts
+        # {58808, 5584, 11838, 1878, 1723} this gives Mild (7%) about 3.3x the
+        # draw probability of No-DR (74%) — a partial rebalancing that fixes
+        # the Mild/Moderate gradient starvation without collapsing the
+        # majority-class signal. Stacks with CORN's per-threshold inverse_sqrt
+        # loss weights (which fix LOSS MAGNITUDE for minority classes) — they
+        # address different problems (exposure vs. magnitude).
+        labels = train_ds.get_labels()
+        class_counts = np.bincount(labels, minlength=NUM_CLASSES)
+        # Avoid div-by-zero; class with zero samples gets weight 0 (never drawn).
+        class_weights = 1.0 / np.sqrt(np.maximum(class_counts, 1))
+        sample_weights = class_weights[labels]
+        sampler = torch.utils.data.WeightedRandomSampler(
+            weights=sample_weights.tolist(),
+            num_samples=len(train_ds),
+            replacement=True,
+        )
+        shuffle = False  # sampler handles ordering
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
                                num_workers=NUM_DATALOADER_WORKERS,
                                pin_memory=True, drop_last=True,
                                persistent_workers=True)
@@ -91,10 +114,11 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
     seg_dir = phase_cfg.get("seg_dir", None)  # Option A segmentation
     # img_size: phase override > model-level default
     img_size = phase_cfg.get("img_size") or run_cfg.get("model", {}).get("img_size")
+    use_sqrt_sampler = phase_cfg.get("use_sqrt_sampler", False)
 
     train_loader, val_loader, train_ds = build_dataloaders(
         manifest_train, manifest_val, aug_strength, batch_size,
-        seg_dir=seg_dir, img_size=img_size,
+        seg_dir=seg_dir, img_size=img_size, use_sqrt_sampler=use_sqrt_sampler,
     )
 
     freeze = phase_cfg.get("freeze_backbone", False)
