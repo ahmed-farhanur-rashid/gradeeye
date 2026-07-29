@@ -86,7 +86,8 @@ _SUPPORTED_ARCHS = {alias: spec.timm_name for alias, spec in ARCH_REGISTRY.items
 
 
 def build_backbone(pretrained: bool = True, arch: str = "convnext_tiny",
-                   in_chans: int = 3, img_size: int | None = None) -> TimmBackbone:
+                   in_chans: int = 3, img_size: int | None = None,
+                   use_groupnorm: bool = False) -> TimmBackbone:
     """
     in_chans: number of input channels. Default 3 (RGB). Set to 4 to accept
               an optional 4th-channel segmentation mask concatenated to RGB.
@@ -96,8 +97,16 @@ def build_backbone(pretrained: bool = True, arch: str = "convnext_tiny",
     img_size: optional override of input spatial size. Required for Swin-Tiny
               because the pretrained variant is at 224 and our preprocessing
               produces 384x384 images.
+    use_groupnorm: if True, replace every BatchNorm2d in the backbone with
+                   GroupNorm. This is used for EffNetV2-S where BN's running
+                   statistics were unstable at the phase transition.
     """
     spec = get_arch_spec(arch)
     img_size_arg = img_size if spec.needs_img_size_kwarg else None
-    return TimmBackbone(spec.timm_name, pretrained=pretrained, img_size=img_size_arg,
-                        in_chans=in_chans)
+    backbone = TimmBackbone(spec.timm_name, pretrained=pretrained,
+                             img_size=img_size_arg, in_chans=in_chans)
+    if use_groupnorm:
+        from src.models.groupnorm_swap import swap_bn_to_gn
+        n = swap_bn_to_gn(backbone)
+        print(f"  Replaced {n} BatchNorm2d with GroupNorm in {arch}")
+    return backbone

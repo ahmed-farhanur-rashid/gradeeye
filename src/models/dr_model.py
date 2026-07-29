@@ -15,7 +15,8 @@ class DRGradingModel(nn.Module):
                  cbam_num_stages: int = 2, num_thresholds: int = 4,
                  head_hidden_dim: int = 512, dropout: float = 0.3,
                  output_mode: str = "corn", arch: str = "convnext_tiny",
-                 in_chans: int = 3, img_size: int = 384):
+                 in_chans: int = 3, img_size: int = 384,
+                 use_groupnorm: bool = False):
         """
         arch: backbone architecture name (see backbone.py ARCH_REGISTRY).
         use_cbam: toggle for the baseline run (plan Section 5 run matrix —
@@ -28,10 +29,15 @@ class DRGradingModel(nn.Module):
         img_size: target input spatial size; must match the preprocessing
                   pipeline. Swin-Tiny needs this explicitly (its pretrained
                   variant is 224, our preprocessing is 384).
+        use_groupnorm: if True, replace every BatchNorm2d in the backbone
+                       with GroupNorm. Use this for EffNetV2-S where
+                       BN's running stats drift at the frozen→unfrozen
+                       phase transition.
         """
         super().__init__()
         self.backbone = build_backbone(pretrained=pretrained, arch=arch,
-                                       in_chans=in_chans, img_size=img_size)
+                                       in_chans=in_chans, img_size=img_size,
+                                       use_groupnorm=use_groupnorm)
         num_stages = len(self.backbone.out_channels)
         cbam_num_stages = min(cbam_num_stages, num_stages)
 
@@ -171,4 +177,5 @@ def build_model(config: dict) -> DRGradingModel:
         arch=model_cfg.get("arch", "convnext_tiny"),
         in_chans=model_cfg.get("in_chans", 3),
         img_size=model_cfg.get("img_size", 384),
+        use_groupnorm=model_cfg.get("use_groupnorm", False),
     )

@@ -2,6 +2,7 @@
 Main training loop — wires together model, loss, optimizer, checkpointing,
 EMA, and MixUp across the 3-phase schedule (plan Sections 5-6).
 """
+import os
 import time
 
 import torch
@@ -19,6 +20,20 @@ from src.training.ema import ModelEMA
 from src.training.progress import make_batch_progress
 
 NUM_CLASSES = 5
+
+# Honor GRADEEYE_NO_AMP=1 to disable bfloat16 autocast. Used to test
+# whether BF16 BN running-stat accumulation vs FP32 eval-time read was
+# the source of the EfficientNetV2-S eval-mode divergence.
+_USE_AMP = os.environ.get("GRADEEYE_NO_AMP", "0") != "1"
+
+
+def _autocast_ctx(device):
+    """Return an autocast context manager that's a no-op when AMP is disabled."""
+    if _USE_AMP:
+        return torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu",
+                              dtype=torch.bfloat16)
+    from contextlib import nullcontext
+    return nullcontext()
 
 
 def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int,
@@ -69,7 +84,7 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
                 )
 
             optimizer.zero_grad()
-            with torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", dtype=torch.bfloat16):
+            with _autocast_ctx(device):
                 logits = model(images)
 
             # CRITICAL: cast logits to float32 before loss computation.
@@ -155,7 +170,7 @@ def validate_one_epoch(model, dataloader: DataLoader, device, epoch: int,
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
 
-            with torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", dtype=torch.bfloat16):
+            with _autocast_ctx(device):
                 logits = model(images)
 
             # Cast to float32 for numerically stable loss (see train_one_epoch).

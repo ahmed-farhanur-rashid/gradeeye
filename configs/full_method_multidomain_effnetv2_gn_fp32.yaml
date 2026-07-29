@@ -1,0 +1,58 @@
+# EffNetV2-S diagnostic v2: GroupNorm + 3-channel + FP32.
+# Hypothesis: the eval-mode logit explosion at the frozen→unfrozen phase
+# transition was caused by stale BatchNorm running stats (train mode uses
+# batch stats, eval mode reads the stale buffer). GroupNorm has no running
+# statistics, so the phase transition can't break it.
+# This config also keeps FP32 to avoid BF16 BN accumulation precision drift.
+
+run_name: "full_method_multidomain_effnetv2_gn_fp32"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "corn"
+use_class_weighting: true
+use_mixup: true
+
+model:
+  arch: "efficientnetv2_s"
+  pretrained: true
+  use_cbam: true
+  cbam_num_stages: 2
+  num_thresholds: 4
+  head_hidden_dim: 512
+  dropout: 0.4
+  channels_last: false
+  in_chans: 3
+  use_groupnorm: true   # ← THE FIX — no BN running stats → no eval-mode divergence
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/combined_train.csv"
+    manifest_val: "data/splits/combined_val.csv"
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 16
+    num_epochs: 3
+    head_lr: 0.0005
+    warmup_epochs: 0
+    scheduler: "cosine"
+    img_size: 384
+    use_sqrt_sampler: false
+
+  phase2_full_training:
+    manifest_train: "data/splits/combined_train.csv"
+    manifest_val: "data/splits/combined_val.csv"
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 8
+    num_epochs: 5
+    head_lr: 0.00002
+    backbone_lr: 0.000002
+    weight_decay: 0.01
+    warmup_epochs: 0
+    scheduler: "cosine"
+    min_epochs: 3
+    overfitting_patience: 3
+    img_size: 384
+    use_sqrt_sampler: false

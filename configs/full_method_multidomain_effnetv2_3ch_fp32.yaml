@@ -1,0 +1,61 @@
+# Minimal EffNetV2-S diagnostic: 3-channel input, FP32 (no autocast).
+# Hypothesis being tested: the failure was caused by either
+# (a) 4-channel init mismatch, or
+# (b) BF16/FP32 BN precision drift.
+# If this converges, we know it was one of those and we have a working model.
+
+run_name: "full_method_multidomain_effnetv2_3ch_fp32"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "corn"
+use_class_weighting: true
+use_mixup: true
+# FP32 autocast: pass use_amp=False via... well, we need to plumb this.
+# For now, just keep config simple; we override in train.py via env if needed.
+
+model:
+  arch: "efficientnetv2_s"
+  pretrained: true
+  use_cbam: true
+  cbam_num_stages: 2
+  num_thresholds: 4
+  head_hidden_dim: 512
+  dropout: 0.4
+  channels_last: false
+  in_chans: 3   # 3-CHANNEL — no segmentation mask
+  # seg_dir removed — model takes RGB only
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/combined_train.csv"
+    manifest_val: "data/splits/combined_val.csv"
+    # seg_dir: not set, RGB only
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 16      # REDUCED from 48 — FP32 needs more memory than BF16
+    num_epochs: 3       # SHORTER — diagnostic only, 3 epochs to confirm convergence
+    head_lr: 0.0005     # HALF the original 1e-3 — safer for diagnostic
+    warmup_epochs: 0    # NO WARMUP — get straight to work
+    scheduler: "cosine"
+    img_size: 384
+    use_sqrt_sampler: false
+
+  phase2_full_training:
+    manifest_train: "data/splits/combined_train.csv"
+    manifest_val: "data/splits/combined_val.csv"
+    # seg_dir: not set, RGB only
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 8       # REDUCED from 16 — FP32 + backprop needs much more memory
+    num_epochs: 5       # ONLY 5 epochs — diagnostic
+    head_lr: 0.00002    # LOW — 2e-5
+    backbone_lr: 0.000002
+    weight_decay: 0.01
+    warmup_epochs: 0
+    scheduler: "cosine"
+    min_epochs: 3
+    overfitting_patience: 3
+    img_size: 384
+    use_sqrt_sampler: false
