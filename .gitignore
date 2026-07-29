@@ -55,6 +55,7 @@ processed/
 raw/
 splits/
 !data/.gitkeep
+data/
 *.tsv
 *.dat
 *.hdf5

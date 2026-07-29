@@ -1,0 +1,63 @@
+# Full method on EfficientNetV2-S, multi-domain (EyePACS + APTOS + Messidor2
+# combined) training, 2-phase pipeline. Mirrors full_method_multidomain.yaml
+# with arch changed. Ready to launch after ConvNeXt multi-domain finishes.
+
+run_name: "full_method_multidomain_effnetv2"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "corn"
+use_class_weighting: true
+use_mixup: true
+
+model:
+  arch: "efficientnetv2_s"
+  pretrained: true
+  use_cbam: true
+  cbam_num_stages: 2
+  num_thresholds: 4
+  head_hidden_dim: 512
+  dropout: 0.4
+  channels_last: false   # BN-heavy; standard contiguous works fine
+  in_chans: 4            # 4 channels: 3 RGB + 1 pretrained U-Net
+                         # segmentation mask (DRIVE vessels + IDRiD lesions).
+  # seg_dir: <path>     # set per-phase below to enable 4-channel mode.
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/combined_train.csv"
+    manifest_val: "data/splits/combined_val.csv"
+    seg_dir: "data/processed/segmentation_combined"
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 48       # 4-channel ~28% more memory; reduced from 64
+    num_epochs: 5
+    head_lr: 0.001
+    warmup_epochs: 1
+    scheduler: "cosine"
+    img_size: 384
+    use_sqrt_sampler: false
+
+  phase2_full_training:
+    manifest_train: "data/splits/combined_train.csv"
+    manifest_val: "data/splits/combined_val.csv"
+    seg_dir: "data/processed/segmentation_combined"
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 16       # smaller batch for more gradient updates per epoch,
+                          # more frequent BN stat updates -> less stale stats
+                          # contributing to val_loss explosion.
+    num_epochs: 35
+    head_lr: 0.00002      # 5x lower than ConvNeXt's 1.22e-4; EffNetV2 BN-heavy
+                          # gradients are larger than ConvNeXt LN gradients.
+    backbone_lr: 0.000002
+    weight_decay: 0.05    # higher weight decay regularizes BN affine params,
+                          # which were the suspected source of instability.
+    warmup_epochs: 4      # longer warmup so LR ramps slowly enough that BN
+                          # running stats converge before full-LR updates.
+    scheduler: "cosine"
+    min_epochs: 8
+    overfitting_patience: 7
+    img_size: 384
+    use_sqrt_sampler: true

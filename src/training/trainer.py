@@ -7,7 +7,7 @@ import time
 import torch
 from torch.utils.data import DataLoader
 
-from src.augmentation.transforms import maybe_apply_mixup
+from src.augmentation.transforms import camera_color_jitter, maybe_apply_mixup
 from src.losses.corn_loss import corn_loss
 from src.losses.ce_baseline import ce_loss
 from src.models.corn import corn_predict
@@ -28,7 +28,10 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
                      grad_clip_norm: float = 5.0, log_path: str | None = None,
                      checkpoint_dir: str | None = None, run_name: str = "run",
                      checkpoint_every_n_steps: int = 500,
-                     scheduler=None):
+                     scheduler=None,
+                     camera_jitter: bool = False,
+                     camera_jitter_channel_std: float = 0.08,
+                     camera_jitter_gamma_range: tuple[float, float] = (0.85, 1.15)):
     """Train for one epoch.
 
     scheduler: optional step-based scheduler (cosine, warmup, etc.) to step
@@ -53,6 +56,17 @@ def train_one_epoch(model, dataloader: DataLoader, optimizer, device, epoch: int
             images, labels_a, labels_b, lam = maybe_apply_mixup(
                 images, labels, alpha=mixup_alpha, enabled=mixup_enabled
             )
+
+            # Domain-robustness training signal: simulate inter-camera color
+            # variation per batch. This forces the model to NOT depend on
+            # any specific camera's color/illumination profile, which is the
+            # mechanism behind the in-domain->zero-shot QWK gap.
+            if camera_jitter:
+                images = camera_color_jitter(
+                    images,
+                    channel_std=camera_jitter_channel_std,
+                    gamma_range=camera_jitter_gamma_range,
+                )
 
             optimizer.zero_grad()
             with torch.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", dtype=torch.bfloat16):

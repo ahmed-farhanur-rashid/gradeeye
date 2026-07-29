@@ -131,6 +131,21 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
         else:
             m.unfreeze_backbone()
 
+    # Reset BN running stats at every phase transition. The stats accumulated
+    # during Phase 1 (frozen backbone, head-only gradients) were estimated
+    # under a near-frozen weight distribution. When Phase 2 unfreezes the
+    # backbone, those stats are immediately stale and cause val_loss to
+    # explode (seen: 23k-30k+ on EfficientNetV2-S, which has 222 BN buffers;
+    # ConvNeXt uses LayerNorm so it's unaffected). LayerNorm backbones have
+    # no running stats to reset, so this is a no-op for them.
+    import torch.nn as nn
+    for m in [model, val_model]:
+        for sub in m.modules():
+            if isinstance(sub, nn.BatchNorm2d):
+                sub.running_mean.zero_()
+                sub.running_var.fill_(1.0)
+                sub.num_batches_tracked.zero_()
+
     # Reset EMA at each phase transition so shadow weights start fresh.
     if ema is not None:
         ema.reset(model)
@@ -208,6 +223,9 @@ def run_phase(model, phase_name: str, phase_cfg: dict, run_cfg: dict, device,
             ema=ema, divergence_guard=divergence_guard, log_path=log_path,
             checkpoint_dir=checkpoint_dir, run_name=run_name,
             scheduler=step_scheduler,
+            camera_jitter=phase_cfg.get("camera_jitter", False),
+            camera_jitter_channel_std=phase_cfg.get("camera_jitter_channel_std", 0.08),
+            camera_jitter_gamma_range=tuple(phase_cfg.get("camera_jitter_gamma_range", [0.85, 1.15])),
         )
 
         if ema is not None:

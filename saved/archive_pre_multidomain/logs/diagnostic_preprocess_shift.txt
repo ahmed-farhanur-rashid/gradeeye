@@ -1,0 +1,4 @@
+KL symmetric: 0.0211
+Channel shifts (Mess - Apt): R=+0.0451, G=+0.0169, B=+0.0068
+Laplacian var ratio: 1.238
+Verdict: SIGNIFICANT preprocessing-induced domain shift. Sonnet hypothesis #1 CONFIRMED — Ben Graham+CLAHE is likely baking in EyePACS-style assumptions that don't transfer to Messidor2's camera hardware. RECOMMEND next: train variant with reduced Ben Graham (or stronger per-batch color jitter to simulate camera variation).

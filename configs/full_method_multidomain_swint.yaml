@@ -1,0 +1,58 @@
+# Full method on SwinV2-Tiny@256, multi-domain (EyePACS + APTOS + Messidor2
+# combined) training, 2-phase pipeline. Mirrors full_method_multidomain.yaml
+# with arch changed.
+
+run_name: "full_method_multidomain_swint"
+checkpoint_dir: "saved/checkpoints"
+log_dir: "saved/logs"
+ema_decay: 0.999
+
+loss_type: "corn"
+use_class_weighting: true
+use_mixup: true
+
+model:
+  arch: "swin_tiny_patch4_window7_384"   # alias -> swinv2_tiny_window8_256
+  pretrained: true
+  use_cbam: true
+  cbam_num_stages: 2
+  num_thresholds: 4
+  head_hidden_dim: 512
+  dropout: 0.4
+  channels_last: false  # Swin uses window-attention; channels_last isn't needed
+  in_chans: 4            # 4 channels: 3 RGB + 1 pretrained U-Net
+                         # segmentation mask (DRIVE vessels + IDRiD lesions).
+  img_size: 256          # backbone-native input size; train pipeline resizes to this
+
+phases:
+  phase1_frozen:
+    manifest_train: "data/splits/combined_train.csv"
+    manifest_val: "data/splits/combined_val.csv"
+    seg_dir: "data/processed/segmentation_combined"
+    freeze_backbone: true
+    aug_strength: "light"
+    batch_size: 96       # 4-channel ~28% more memory; reduce from 96->72 if OOM
+    num_epochs: 5
+    head_lr: 0.001
+    warmup_epochs: 1
+    scheduler: "cosine"
+    img_size: 256
+    use_sqrt_sampler: false
+
+  phase2_full_training:
+    manifest_train: "data/splits/combined_train.csv"
+    manifest_val: "data/splits/combined_val.csv"
+    seg_dir: "data/processed/segmentation_combined"
+    freeze_backbone: false
+    aug_strength: "light"
+    batch_size: 40       # 4-channel backprop larger; reduced from 48
+    num_epochs: 35
+    head_lr: 0.0000866   # sqrt-scaled from 1e-4 at bs=32 -> bs=40
+    backbone_lr: 0.00000866
+    weight_decay: 0.01
+    warmup_epochs: 2
+    scheduler: "cosine"
+    min_epochs: 8
+    overfitting_patience: 7
+    img_size: 256
+    use_sqrt_sampler: true

@@ -267,3 +267,96 @@ where $O_{i,j}$ is the observed confusion matrix cell count, $E_{i,j}$ is the ex
 $$w_{i,j} = \frac{(i - j)^2}{(4 - 0)^2} = \frac{(i - j)^2}{16}$$
 
 Secondary metrics include macro-averaged one-vs-rest AUC-ROC, overall accuracy, macro F1-score, and per-class precision/recall/F1 metrics. External validation is performed on Messidor-2 without fine-tuning (zero gradient updates) to test out-of-distribution generalization.
+
+## 8. Anatomical prior via auxiliary segmentation channel (4-channel input)
+
+A second network input channel is pre-computed by an auxiliary U-Net trained to detect retinal structures of clinical interest (vasculature and DR lesions). The hypothesis is that explicit anatomical cues — even if imperfect — sharpen the grader's focus on diagnostically relevant regions and reduce its reliance on camera-specific photometric texture.
+
+### 8.1. Auxiliary U-Net architecture
+
+The auxiliary model is a minimal U-Net with a `timm` ImageNet-pretrained EfficientNet-B0 encoder in `features_only` mode, providing five per-stage feature maps with channel widths $[32, 24, 40, 112, 320]$. The decoder progressively upsamples the bottleneck and concatenates encoder skip connections at each level:
+
+```
+Bottleneck (320 ch, 12×12) -> ConvTranspose 256 -> +skip3 (112) -> ConvBlock 256
+                            -> ConvTranspose 128 -> +skip2 (40)  -> ConvBlock 128
+                            -> ConvTranspose  64 -> +skip1 (24)  -> ConvBlock  64
+                            -> ConvTranspose  32 -> +skip0 (32)  -> ConvBlock  32
+                            -> Conv2d 1×1 (1 ch, sigmoid logit)
+```
+
+A double-conv `ConvBlock` block is used throughout: `Conv2d(3×3) → BatchNorm2d → ReLU → Conv2d(3×3) → BatchNorm2d → ReLU`. The final `1×1` convolution produces a single-channel logit map at the encoder's downsampled resolution (192×192 from a 384×384 input). Output is bilinearly upsampled to 384×384 at inference time.
+
+### 8.2. Segmentation supervision — DRIVE vessels ∪ IDRiD lesions
+
+The auxiliary network is fine-tuned on a composite target: pixel-level vessel annotations from DRIVE (20 training retinal images, expert hand-labeled vasculature) unioned with lesion annotations from IDRiD (54 training images, four lesion types: Microaneurysms, Haemorrhages, Hard Exudates, Soft Exudates). DRIVE FOV masks are applied during loss computation to exclude background pixels.
+
+The composite "retinal structures" target is constructed by:
+1. Reading DRIVE `1st_manual/*.gif` (vessel masks) and applying the DRIVE `mask/*.gif` FOV mask.
+2. Reading IDRiD `1. Microaneurysms/*.tif`, `2. Haemorrhages/*.tif`, `3. Hard Exudates/*.tif`, `4. Soft Exudates/*.tif` and taking the per-pixel union (max) across lesion types.
+
+Both annotation sources are resized to 192×192 (encoder output resolution) for the loss. Loss is a 50/50 mix of binary cross-entropy and Dice loss — Dice prevents the BCE-only solution of predicting all-zero (which is the trivial local minimum on these extremely imbalanced masks):
+
+$$L_{\text{seg}} = 0.5 \cdot \text{BCE}(\hat{m}, m) + 0.5 \cdot \left( 1 - \frac{2 \sum (\hat{m} \cdot m)}{\sum (\hat{m} + m) + \epsilon} \right)$$
+
+where $\hat{m} = \sigma(\text{logits})$, $m \in \{0, 1\}^{H \times W}$ is the ground-truth union mask, and $\epsilon = 10^{-6}$.
+
+Optimization: AdamW, learning rate $10^{-4}$, cosine annealing over 15 epochs, batch size 8, gradient clipping to max-norm 1.0.
+
+### 8.3. Mask pre-computation for the grading corpus
+
+After U-Net fine-tuning completes, inference is run over every preprocessed grading image (EyePACS, APTOS 2019, Messidor-2; total ~93,000 images). The resulting 384×384 single-channel probability maps are binarized at 0.5, scaled to uint8 [0, 255], and saved as PNG files into a flat `data/processed/segmentation_combined/` directory keyed by source image basename. The dataset loader matches masks by basename:
+
+```python
+mask_path = os.path.join(seg_dir, os.path.basename(image_path))
+```
+
+All 93k preprocessed grading images receive a corresponding mask, so the 4-channel pipeline never falls back to the zero-mask default.
+
+### 8.4. Four-channel model input
+
+The grader's first convolutional layer is modified to accept $C_{\text{in}} = 4$ channels. For timm backbones pretrained on 3-channel ImageNet, the original 3-channel first-conv weights are mean-pooled and replicated to initialize the 4th channel (the standard "RGB-mean" initialization for additional input channels):
+
+$$W_{\text{init}}[:, 4] = \frac{1}{3} \sum_{c=0}^{2} W_{\text{pretrained}}[:, c]$$
+
+The 4th channel is fed through the standard backbone feature pipeline alongside the three RGB channels. All other model components (CBAM, projection head, CORN logits) are unchanged. The augmentation pipeline uses a `_MaskSafeCompose` wrapper that applies torchvision ColorJitter to RGB only and concatenates the segmentation channel back after the geometric transforms, since torchvision color ops are constrained to 1- or 3-channel inputs.
+
+Ablation toggle: setting `model.in_chans: 3` and removing `seg_dir` reverts the model to standard 3-channel RGB input. The segmentation pipeline is implemented as a configurable knob rather than a hard requirement, allowing direct comparison between RGB-only and RGB+mask variants.
+
+## 9. Multi-domain training protocol (replaces legacy 3-phase setup)
+
+The legacy protocol used EyePACS pretraining followed by APTOS fine-tuning, but the small APTOS subset (≈2.5k images) caused severe overfitting in Phase 3. We replace this with single-stage multi-domain training that combines EyePACS, APTOS, and Messidor-2 into a single training set.
+
+### 9.1. Data splits
+
+Each source is split 80/10/10 into train/val/test using stratified random splits on the ICDR grade label:
+
+| Source | Train | Val | Test |
+|---|---|---|---|
+| EyePACS | 70,538 | 8,818 | 8,816 |
+| APTOS 2019 | 2,929 | 366 | 367 |
+| Messidor-2 | 1,815 | 227 | 227 |
+| **Combined** | **75,282** | **9,411** | **9,410** |
+
+The combined train manifest concatenates all sources with a `source` column. Stratified-per-source splits ensure each source is represented proportionally in val/test.
+
+### 9.2. Two-phase multi-domain training
+
+```
+Phase 1: Frozen-Backbone Head Warmup (Combined train, 5 epochs, bs=24-48, head LR=1e-3)
+   |
+Phase 2: Full Backbone Fine-tune (Combined train, 35 epochs, bs=24-32, head LR=1.22e-4, backbone LR=1.22e-5)
+```
+
+* **Phase 1**: Backbone weights frozen, only the projection head and CORN logits are trained for 5 epochs at LR $10^{-3}$. The objective is to bring the head's conditional probability estimates into a sensible range before unfreezing the backbone.
+* **Phase 2**: All parameters unfrozen. Head LR $1.22 \times 10^{-4}$, backbone LR $1.22 \times 10^{-5}$ (10× smaller to prevent catastrophic forgetting of pretrained ImageNet features). 35 epochs, batch size 24 (4-channel input), AdamW weight decay $\lambda = 0.01$, cosine LR schedule with 2 epochs linear warmup. Early-stopping patience is set to 7 epochs on validation QWK with a minimum of 8 epochs.
+
+A sqrt-frequency `WeightedRandomSampler` over training labels is enabled in Phase 2 to mitigate the heavy class imbalance (Grade 0 alone accounts for ~50% of combined samples). Phase 1 uses uniform sampling to keep the head-warmup signal clean.
+
+### 9.3. Per-architecture considerations
+
+Two architectures are trained through the identical protocol to provide a 2-model ensemble for evaluation:
+
+* **ConvNeXt-Tiny + CBAM** — 4-channel input, `channels_last=True` for memory-efficient convolutions, batch size 64 in Phase 1 / 24 in Phase 2 (4-channel consumes ~28% more memory than 3-channel).
+* **EfficientNetV2-S + CBAM** — 4-channel input, `channels_last=False` (BN-heavy; contiguous format works fine), batch size 48 in Phase 1 / 24 in Phase 2.
+
+Both models share the same head architecture (Section 3.2) and the same loss function (CORN with class weighting).

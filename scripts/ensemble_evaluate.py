@@ -151,6 +151,16 @@ def evaluate_ensemble(checkpoint_paths: list[str], manifest_csv: str,
                 "was provided AND no default candidate exists. Pass --seg-dir."
             )
 
+    # If caller didn't pin an img_size, derive it from the loaded model
+    # configs (so Swin@256 vs ConvNeXt@384 just work). If configs disagree,
+    # use the smallest to satisfy all backbones.
+    if img_size is None and configs:
+        sizes = [c.get("model", {}).get("img_size") for c in configs
+                 if c.get("model", {}).get("img_size") is not None]
+        if sizes:
+            img_size = max(sizes) if len(set(sizes)) > 1 else sizes[0]
+            print(f"  Auto-detected img_size={img_size} from checkpoint(s)")
+
     # Build dataloader (ImageNet normalization is the default in DRDataset)
     dataset = DRDataset(manifest_csv, transform=build_eval_transforms(img_size=img_size), seg_dir=seg_dir)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=2)

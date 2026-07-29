@@ -1,9 +1,9 @@
 # GradeEye — Diabetic Retinopathy Grading Pipeline
 
 5-class (ICDR 0-4) diabetic retinopathy grading: backbones (ConvNeXt-Tiny /
-SwinV2-CR-Tiny@384 / EfficientNetV2-S) + CBAM attention (last 2 stages)
-+ CORN ordinal regression head + optional 4th-channel vessel segmentation
-mask (Option A).
+EfficientNetV2-S) + CBAM attention (last 2 stages) + CORN ordinal regression
+head + optional 4th-channel anatomical segmentation mask (DRIVE vessels ∪
+IDRiD lesions, fine-tuned U-Net).
 
 **Every dataset used in this project is validated as exactly 5-class
 (0=No DR, 1=Mild, 2=Moderate, 3=Severe, 4=Proliferative DR) at multiple
@@ -37,100 +37,45 @@ python scripts/build_manifests.py --dataset all
 # 4. One-shot image preprocessing (border crops, CLAHE, etc.)
 python scripts/preprocess_all.py
 
-# 5. Build splits from PROCESSED manifests
-python scripts/build_splits.py --dataset all
+# 5. Build per-source 80/10/10 stratified splits + combined train/val CSVs
+python scripts/build_multidomain_splits.py
 
-# 6. (Optional) Pre-compute vessel segmentation masks for Option A.
-#    Generates data/processed/segmentation/{eyepacs,aptos,messidor2}/*.png.
-#    Skip if not using full_method_convnext_seg.yaml.
+# 6. (Optional) Pre-compute segmentation masks for the 4-channel pipeline.
+#    If DRIVE (data/drive/) AND IDRiD (data/A. Segmentation/) are present,
+#    the U-Net is fine-tuned on their union first. Then masks are generated
+#    for all three grading datasets into data/processed/segmentation_combined/.
 python scripts/precompute_seg_masks.py --datasets eyepacs aptos messidor2
-
-#    If DRIVE is at data/drive/, the U-Net will be fine-tuned on DRIVE
-#    for 5 epochs first. Otherwise random-init weights (masks will be
-#    noise but the pipeline still works end-to-end for demonstration).
 
 # 7. Train (pick a run config — see configs/)
 # Note: To retrain a model from scratch, first clear its checkpoints/logs:
 # rm -rf saved/checkpoints/<run_name>* saved/logs/<run_name>*
 
-# Main: ConvNeXt-Tiny baseline (fastest to converge)
-python scripts/train.py --config configs/full_method_convnext.yaml
+# Main: 2-phase multi-domain ConvNeXt-Tiny (4-channel, segmented)
+python scripts/train.py --config configs/full_method_multidomain.yaml
 
-# Main: SwinV2-CR-Tiny@384 (transformer architecture)
-python scripts/train.py --config configs/full_method_swint.yaml
-
-# Ablation: Option A segmentation added (4-channel input)
-python scripts/train.py --config configs/full_method_convnext_seg.yaml
-
-# Ablations (run after the main runs, only need a few)
-python scripts/train.py --config configs/baseline_convnext.yaml
-python scripts/train.py --config configs/ablation_ce_weighted_cbam_convnext.yaml
+# Second model: 2-phase multi-domain EfficientNetV2-S (4-channel, segmented)
+python scripts/train.py --config configs/full_method_multidomain_effnetv2.yaml
 
 # 8. Evaluate a single model checkpoint on any split (use --tta for Test-Time Augmentation)
-# Note: --norm-stats is deprecated; ImageNet normalization is now the default.
-# Evaluate ConvNeXt-Tiny on APTOS test:
-python src/eval/evaluate.py \
-    --checkpoint saved/checkpoints/full_method_convnext_best.pt \
+# ConvNeXt on APTOS test:
+python scripts/evaluate.py \
+    --checkpoint saved/checkpoints/full_method_multidomain_best.pt \
     --manifest data/splits/aptos_test.csv \
     --tta
 
-# Evaluate ConvNeXt-Tiny on Messidor-2 (external validation):
-python src/eval/evaluate.py \
-    --checkpoint saved/checkpoints/full_method_convnext_best.pt \
+# ConvNeXt on Messidor-2 test (external validation):
+python scripts/evaluate.py \
+    --checkpoint saved/checkpoints/full_method_multidomain_best.pt \
     --manifest data/splits/messidor2_test.csv \
     --tta
 
-# Evaluate the segmentation variant on APTOS test:
-python src/eval/evaluate.py \
-    --checkpoint saved/checkpoints/full_method_convnext_seg_best.pt \
-    --manifest data/splits/aptos_test.csv \
-    --tta
-
-# 9. Ensemble evaluation (combine multiple checkpoints, average class probs)
+# 9. Ensemble evaluation (average probabilities across architectures)
 python scripts/ensemble_evaluate.py \
-    --checkpoints saved/checkpoints/full_method_convnext_best.pt \
-                  saved/checkpoints/full_method_swint_best.pt \
+    --checkpoints saved/checkpoints/full_method_multidomain_best.pt \
+                  saved/checkpoints/full_method_multidomain_effnetv2_best.pt \
     --manifest data/splits/aptos_test.csv \
     --tta
-
-# 10. (Optional) Probe max batch size for your GPU before a real run
-python scripts/probe_batch_size.py --arch swin_tiny_patch4_window7_384
 ```
-
-# 9. Ensemble evaluation (the paper's headline number — average probabilities across models)
-# APTOS test:
-python scripts/ensemble_evaluate.py \
-    --checkpoints saved/checkpoints/full_method_best.pt \
-                  saved/checkpoints/ensemble_effnetv2_best.pt \
-    --manifest data/splits/aptos_test.csv \
-    --norm-stats data/processed/aptos_norm_stats.json \
-    --tta
-
-# Messidor-2 (external validation):
-python scripts/ensemble_evaluate.py \
-    --checkpoints saved/checkpoints/full_method_best.pt \
-                  saved/checkpoints/ensemble_effnetv2_best.pt \
-    --manifest data/splits/messidor2_test.csv \
-    --norm-stats data/processed/messidor2_norm_stats.json \
-    --tta
-
-# 10. Generate all conference-paper figures + LaTeX tables in one shot
-#     (confusion matrices, ROC curves, training curves, run-comparison
-#     bar chart + table, per-class metrics tables), across the 3 run
-#     configs at once:
-python scripts/generate_paper_assets.py \
-    --checkpoints saved/checkpoints/baseline_best.pt \
-                  saved/checkpoints/ablation_ce_weighted_cbam_best.pt \
-                  saved/checkpoints/full_method_best.pt \
-    --test-manifest data/splits/aptos_test.csv \
-    --norm-stats data/processed/aptos_norm_stats.json \
-    --manifests-for-distribution EyePACS=data/processed/eyepacs_manifest.csv \
-                                  APTOS=data/processed/aptos_manifest.csv \
-                                  Messidor-2=data/processed/messidor2_manifest.csv
-```
-
-Outputs land in `paper_assets/figures/` (PNG + PDF) and `paper_assets/tables/`
-(`.tex` files, `\usepackage{booktabs}` required in your paper's preamble).
 
 ## Structure
 
@@ -138,51 +83,62 @@ Outputs land in `paper_assets/figures/` (PNG + PDF) and `paper_assets/tables/`
 gradeeye/
 │
 ├── README.md
+├── context.md                     # Session persistence (read this after compaction)
 ├── requirements.txt
 │
-├── configs/                       # Run configs (baseline / ablation / full_method / ensemble_effnetv2)
+├── configs/                       # Run configs (multidomain / multidomain_effnetv2 / ...)
 │
 ├── data/
 │   ├── raw/                       # Downloaded raw datasets (eyepacs/aptos/messidor2)
-│   ├── processed/                 # Precomputed image caches, manifests, and norm stats
-│   └── splits/                    # Stratified train/val/test CSVs per source
+│   ├── processed/                 # Precomputed images, manifests, segmentation masks
+│   │   └── segmentation_combined/ # Flat directory of all 93k vessel/lesion masks
+│   └── splits/                    # Stratified per-source + combined train/val/test CSVs
 │
-├── notebooks/                     # Jupyter notebooks (e.g., colab_runner.ipynb)
-│
-├── paper_assets/                  # Generated figures (PNG+PDF) and LaTeX tables
+├── docs/
+│   └── methodology.md             # Full methodology writeup (CORN, preprocessing, 4-channel seg, multi-domain training)
 │
 ├── saved/
-│   ├── checkpoints/               # Model checkpoints (self-contained)
-│   └── logs/                      # Per-run training CSV logs (per-batch AND per-epoch)
+│   ├── checkpoints/               # Model checkpoints (EMA weights + arch metadata)
+│   └── logs/                      # Per-run training CSV logs + epoch metrics
 │
 ├── scripts/
-│   ├── build_manifests.py
-│   ├── compute_norm_stats.py
-│   ├── download_datasets.py
-│   ├── ensemble_evaluate.py       # Ensemble evaluation (average CORN probabilities)
-│   ├── generate_paper_assets.py   # All figures + LaTeX tables in one run
-│   ├── preprocess_all.py
-│   └── train.py                   # CLI entry points for pipeline stages
+│   ├── build_multidomain_splits.py
+│   ├── precompute_seg_masks.py    # U-Net fine-tune + mask inference
+│   ├── train.py                   # Multi-phase training CLI
+│   ├── evaluate.py                # Single-model eval
+│   └── ensemble_evaluate.py       # Multi-model CORN probability ensemble
 │
 └── src/
-    ├── augmentation/              # Train/eval transforms, MixUp
-    ├── data/                      # Dataset classes, stratified splitting
-    ├── eval/                      # Metrics (QWK primary), evaluate.py, tta.py, figures.py, latex_tables.py
-    ├── losses/                    # CORN loss, per-threshold class weighting, CE baseline
-    ├── models/                    # ConvNeXt-Tiny backbone, CBAM, projection head, CORN layer
-    ├── preprocessing/             # Border crop, color correction, anisotropic filter, normalize
-    └── training/                  # Trainer, optimizer/scheduler, checkpointing, EMA
+    ├── augmentation/              # Train/eval transforms (incl. _MaskSafeCompose for 4-ch), MixUp
+    ├── data/                      # DRDataset (3-ch or 4-ch via seg_dir)
+    ├── eval/                      # QWK, accuracy, F1, AUC-ROC, TTA
+    ├── losses/                    # CORN ordinal loss + per-threshold class weighting
+    ├── models/                    # ConvNeXt-Tiny / EfficientNetV2-S + CBAM + projection head
+    │   └── segmentation.py        # U-Net (EfficientNet-B0 encoder) for vessel/lesion masks
+    ├── preprocessing/             # Border crop, Ben Graham, green-CLAHE, circular mask, ImageNet norm
+    └── training/                  # Trainer, AdamW + cosine LR, sqrt-freq sampler, EMA
 ```
 
-## Key design decisions (see plan for full rationale)
+## Key design decisions
 
-- **Backbone**: ConvNeXt-Tiny is locked — not swappable for ResNet/EfficientNet/ViT.
+- **Backbones**: ConvNeXt-Tiny (primary) and EfficientNetV2-S (secondary) —
+  two robust architectures for the paper's ensemble.
 - **Attention**: CBAM inserted into the last 2 backbone stages only.
-- **Ordinal head**: CORN (not CORAL) — structural rank-consistency via
+- **Ordinal head**: CORN (not CORAL/CORAL^±) — structural rank-consistency via
   conditional training on 4 binary sub-problems (y>0, y>1, y>2, y>3).
 - **Primary metric**: Quadratic Weighted Kappa (QWK), not accuracy.
-- **3-phase training**: EyePACS frozen-head → EyePACS full-unfreeze →
-  APTOS fine-tune (heavier augmentation, lower LR).
-- **Messidor-2**: eval-only, zero gradient updates — external validation set.
-- **Class imbalance**: inverse-sqrt-frequency weighting applied per CORN
-  binary sub-problem, not as flat 5-class weights.
+- **Multi-domain training**: EyePACS + APTOS + Messidor-2 concatenated into a
+  single training set (75,282 images). Per-source stratified 80/10/10 splits.
+- **Two-phase pipeline**: Frozen-head warmup (5 epochs) → full fine-tune
+  (35 epochs), all on combined-domain data. Single-stage; no separate
+  APTOS fine-tune phase (caused overfitting in legacy 3-phase setup).
+- **Segmentation (4th channel)**: Auxiliary U-Net fine-tuned on DRIVE vessels
+  ∪ IDRiD lesions → ~93k inference masks pre-computed into
+  `data/processed/segmentation_combined/`. Grader backbone accepts
+  4-channel input; first-conv weights initialized as RGB-mean for the
+  additional channel. Toggleable via `model.in_chans: 3` + `seg_dir` removed.
+- **Class imbalance**: inverse-sqrt-frequency WeightedRandomSampler in
+  Phase 2 + per-threshold inverse_sqrt weights in CORN loss.
+- **Domain shift**: Mitigated by multi-domain training + 4-channel anatomical
+  prior, NOT by camera-jitter augmentation (tested empirically: hurts both
+  APTOS and Messidor-2 zero-shot).

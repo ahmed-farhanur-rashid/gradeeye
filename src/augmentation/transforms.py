@@ -25,6 +25,40 @@ import torch
 from torchvision import transforms as T
 
 
+class _MaskSafeCompose:
+    """
+    Apply a 2-stage pipeline to a (C, H, W) tensor where C is 3 or 4:
+      1. `geometric` runs on ALL channels (RGB + mask must move together
+         for rotation/flip/affine/resize).
+      2. `color` runs on RGB only (so ColorJitter can stay 3-channel) and
+         the mask is re-attached afterwards.
+
+    This avoids the trap of splitting RGB from mask *before* applying
+    geometric ops — if the geometric pipeline includes a Resize (e.g. Swin
+    needs 256×256 but preprocessed images are 384×384), splitting first
+    leaves the mask at 384 while RGB is at 256, then concat fails.
+    """
+
+    def __init__(self, geometric: T.Compose, color: T.Compose,
+                 extra_channels: int = 1):
+        self.geometric = geometric
+        self.color = color
+        self.extra_channels = extra_channels
+
+    def __call__(self, t: torch.Tensor) -> torch.Tensor:
+        C = t.shape[0]
+        # Stage 1: geometric transforms apply to all channels.
+        t = self.geometric(t)
+        # Stage 2: color transforms apply to RGB only.
+        if C == 3 + self.extra_channels:
+            extras = t[3:]
+            rgb = t[:3]
+            rgb = self.color(rgb)
+            return torch.cat([rgb, extras], dim=0)
+        # No extras — run color over the full tensor (3-channel case).
+        return self.color(t)
+
+
 def build_train_transforms(strength: str = "light", img_size: int | None = None) -> T.Compose:
     """
     strength: "light" (EyePACS phase) or "heavy" (APTOS fine-tune phase).
@@ -58,12 +92,13 @@ def build_train_transforms(strength: str = "light", img_size: int | None = None)
         translate_frac = 0.06
         brightness, contrast = 0.15, 0.15
 
-    aug_list = []
+    geometric_list = []
     if img_size is not None:
         # Must run BEFORE rotation/affine so the random crop/scale ops
-        # operate on the right tensor size.
-        aug_list.append(T.Resize((img_size, img_size), antialias=True))
-    aug_list.extend([
+        # operate on the right tensor size. Applies to ALL 4 channels so
+        # the mask is resized alongside the RGB image.
+        geometric_list.append(T.Resize((img_size, img_size), antialias=True))
+    geometric_list.extend([
         T.RandomRotation(degrees=180),  # sampling +-180 covers the full 0-360 range
         T.RandomHorizontalFlip(p=0.5),
         T.RandomVerticalFlip(p=0.5),
@@ -72,8 +107,11 @@ def build_train_transforms(strength: str = "light", img_size: int | None = None)
             translate=(translate_frac, translate_frac),
             scale=zoom_range,
         ),
-        T.ColorJitter(brightness=brightness, contrast=contrast),
     ])
+
+    color_list = [
+        T.ColorJitter(brightness=brightness, contrast=contrast),
+    ]
 
     # NOTE: GaussianBlur and RandomErasing were intentionally NOT included
     # here. The training tensors are ALREADY ImageNet-normalized (mean-subtracted,
@@ -88,7 +126,14 @@ def build_train_transforms(strength: str = "light", img_size: int | None = None)
     # drop on Messidor2 zero-shot (0.61 -> 0.45). The augmented training
     # looked healthy on EyePACS val but failed to generalize.
 
-    return T.Compose(aug_list)
+    geometric = T.Compose(geometric_list)
+    color = T.Compose(color_list)
+    # Wrap with mask-safe compose: ColorJitter expects 3 channels; we have
+    # 4 when seg_dir is enabled. Geometric transforms run first on ALL
+    # channels (mask must move with image and be resized with image), then
+    # color transforms split RGB from mask and apply color jitter to RGB
+    # only.
+    return _MaskSafeCompose(geometric, color, extra_channels=1)
 
 
 def build_eval_transforms(img_size: int | None = None) -> T.Compose:
@@ -97,6 +142,69 @@ def build_eval_transforms(img_size: int | None = None) -> T.Compose:
     if img_size is None:
         return T.Compose([])
     return T.Compose([T.Resize((img_size, img_size), antialias=True)])
+
+
+def camera_color_jitter(images: torch.Tensor, channel_std: float = 0.08,
+                         gamma_range: tuple[float, float] = (0.85, 1.15),
+                         p: float = 1.0) -> torch.Tensor:
+    """
+    Simulate inter-camera color variation per-batch (cheap stand-in for
+    RandStainNA which requires reference stain matrices we don't have).
+
+    Operates on already-ImageNet-normalized tensors (mean-centered, std-scaled).
+    Two perturbations:
+
+    1. Per-channel multiplicative gain (simulates camera-amplifier / white
+       balance differences between Topcon TRC NW6 [Messidor2], Canon CR
+       [EyePACS], and various APTOS cameras):
+         imgs *=  1 + N(0, channel_std)   per channel, sample-wise
+
+    2. Per-image gamma correction (simulates illumination intensity variation):
+         imgs = sign(imgs) * |imgs| ^ gamma  where gamma ~ U(0.85, 1.15)
+
+    Why both?
+    - Channel gain alone = white-balance noise only.
+    - Gamma alone = illumination noise only.
+    - Together they cover the dominant axes of cross-camera variation in
+      fundus imagery without needing reference stain matrices.
+
+    Important: shape (B, C, H, W), normalized values (mean-subtracted), so
+    we DO NOT clip to [0, 255] (normalized tensors can be negative). Output
+    stays in normalized space — what goes into the backbone is still
+    on-stats.
+
+    Args:
+        images: (B, C, H, W) float tensor (already ImageNet-normalized).
+        channel_std: per-channel multiplicative jitter (default 0.08 = ~8%).
+        gamma_range: uniform per-image gamma (default 0.85-1.15).
+        p: probability of applying (default 1.0, jitter is light enough to
+           apply always).
+
+    Returns: same shape, augmented in-place copy.
+    """
+    if random.random() > p:
+        return images
+
+    images = images.clone()
+    B, C, H, W = images.shape
+    device = images.device
+
+    # 1. Per-channel, per-image multiplicative gain
+    gain = 1.0 + torch.randn(B, C, 1, 1, device=device) * channel_std
+    images = images * gain
+
+    # 2. Per-image gamma (preserve sign for mean-centered values)
+    gamma = torch.empty(B, 1, 1, 1, device=device).uniform_(
+        gamma_range[0], gamma_range[1])
+    # sign-preserving power: sign(x) * |x|^gamma
+    # For mean-centered tensors ~N(0,1), values are small, so the power is
+    # well-behaved. Clamp magnitude away from 0 to avoid gradient issues.
+    sign = torch.sign(images)
+    sign = torch.where(sign == 0, torch.ones_like(sign), sign)
+    magnitude = images.abs().clamp(min=1e-6)
+    images = sign * magnitude.pow(gamma)
+
+    return images
 
 
 def mixup_batch(images: torch.Tensor, labels: torch.Tensor, alpha: float = 0.2):
