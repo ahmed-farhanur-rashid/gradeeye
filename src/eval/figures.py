@@ -44,9 +44,9 @@ def _save_both(fig, out_dir: str, name: str) -> dict:
 
 def plot_training_curves(epoch_log_csv: str, out_dir: str, run_name: str) -> dict:
     """
-    Reads the per-epoch CSV log written by scripts/train.py
+    Reads the per-epoch CSV log written by src.training.orchestrate
     (saved/logs/{run_name}_epoch_log.csv) and plots loss + QWK curves
-    spanning all 3 training phases, with vertical lines marking phase
+    spanning all training phases, with vertical lines marking phase
     boundaries.
     """
     df = pd.read_csv(epoch_log_csv)

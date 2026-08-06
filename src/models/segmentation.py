@@ -6,8 +6,9 @@ dependency), using a timm encoder backbone. Used by Option A segmentation
 to pre-compute vessel masks over EyePACS/APTOS/Messidor.
 
 For inference we typically load weights pretrained on DRIVE (40 retinal
-vessel segmentation images) — see scripts/precompute_seg_masks.py for
-the download + fine-tune + inference pipeline.
+vessel segmentation images) — see `src.data._03_segmentation` and
+`python -m src.data.cli segmentation` for the fine-tune + inference
+pipeline.
 """
 import torch
 import torch.nn as nn

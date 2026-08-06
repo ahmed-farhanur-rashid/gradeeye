@@ -10,7 +10,8 @@ Used for:
 Since the model architecture always outputs `num_thresholds` = num_classes-1
 raw values for CORN compatibility, the CE baseline path instead expects a
 model configured with a standard Linear(num_classes) head. See
-scripts/train.py for how the baseline run swaps head output width.
+See `python -m src.train` (and the `loss_type: ce` config field) for how
+the baseline run swaps head output width.
 """
 import torch
 import torch.nn.functional as F

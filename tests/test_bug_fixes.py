@@ -7,6 +7,7 @@ Validates:
     probabilities (i.e. the cumprod step is now per-pass, not post-aggregation).
   - freeze_backbone keeps BN params trainable.
 """
+import os
 import sys
 sys.path.insert(0, "/home/farhan/my-projects/gradeeye")
 
@@ -53,9 +54,15 @@ def test_tta_returns_class_probabilities():
     """tta_forward must return a CLASS distribution (sums to 1, has 5 entries),
     not a conditional probability vector (4 entries that need cumprod)."""
     from src.models.dr_model import build_model
+    from src.config_merge import merge_configs
     import yaml
-    with open("/home/farhan/my-projects/gradeeye/configs/full_method_convnext.yaml") as f:
-        cfg = yaml.safe_load(f)
+    # Configs are split by axis — load model + LODO yamls and merge.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(f"{repo_root}/configs/models/convnext_tiny.yaml") as f:
+        model_cfg = yaml.safe_load(f)
+    with open(f"{repo_root}/configs/lodo/eyepacs.yaml") as f:
+        lodo_cfg = yaml.safe_load(f)
+    cfg = merge_configs(model_cfg, lodo_cfg)
     cfg["model"]["pretrained"] = False
     cfg["model"]["use_cbam"] = False
     model = build_model(cfg)

@@ -34,6 +34,15 @@ How it works:
 - Search bounded by [0, 1] per threshold; sorted into monotonic order
   after each evaluation so we never evaluate an out-of-order configuration.
 
+NOTE — DO NOT CONFUSE WITH `src/eval/probability_calibration.py`:
+  - This file: decision-rule calibration (no model probabilities changed).
+  - `probability_calibration.py`: temperature scaling (model probabilities
+    themselves are re-calibrated before argmax).
+  - The two are STACKED in the paper: temperature scale first, then apply
+    threshold calibration on the calibrated probabilities. Renamed
+    `threshold_calibration.py` → `calibration_thresholds.py` in Phase 4 of
+    the cleanup plan, but kept at this path during Phase 1-3 development.
+
 Usage:
     from src.eval.threshold_calibration import (
         optimize_thresholds, predict_with_thresholds, save_thresholds,

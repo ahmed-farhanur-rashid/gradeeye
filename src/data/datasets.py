@@ -5,8 +5,8 @@ All three are 5-class (0-4 ICDR) ordinal label sets. Expects a CSV/DataFrame
 with columns: image_path, label (int 0-4).
 
 IMPORTANT (per user requirement): every dataset used here must be exactly
-5-class ICDR (0-4). See scripts/download_datasets.py and
-src/data/stratified_split.py for where label counts are validated.
+5-class ICDR (0-4). See `src/data/_00_manifests.py` and
+`src/data/stratified_split.py` for where label counts are validated.
 
 Normalization:
   Defaults to ImageNet mean/std (RGB, [0,1] scale) — the pretrained backbones
@@ -48,8 +48,10 @@ class DRDataset(Dataset):
     transform for augmentation.
 
     The full preprocessing pipeline (crop/pad/resize, color correction,
-    optional anisotropic filter) is run offline by scripts/preprocess_all.py
-    and the resulting PNGs are what this dataset reads.
+    optional anisotropic filter) is run offline by
+    `python -m src.data.cli preprocess --dataset <source>` (see
+    `src/data/_01_preprocess.py`) and the resulting PNGs are what this
+    dataset reads.
     """
 
     def __init__(

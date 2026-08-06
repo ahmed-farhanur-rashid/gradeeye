@@ -13,7 +13,7 @@ Affine parameters (weight/bias) carry over 1:1. running_mean/running_var
 are dropped. num_batches_tracked is dropped.
 
 Usage:
-    python scripts/swap_bn_to_gn.py \
+    python -m src.models.groupnorm_swap \
         --input saved/checkpoints/full_method_multidomain_effnetv2_best.pt \
         --output saved/checkpoints/full_method_multidomain_effnetv2_gn_best.pt
 """

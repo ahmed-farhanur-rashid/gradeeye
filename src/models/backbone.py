@@ -1,19 +1,35 @@
 """
 Backbone feature extractors via timm.
 
-Supports ConvNeXt-Tiny, EfficientNetV2-S, and Swin-Tiny@384 (plan Section 4 /
-Section 6). All backbones expose the same contract:
+Five LayerNorm-native architectures for the journal ensemble:
+  - ConvNeXt-Tiny / ConvNeXt-Small (within-family scaling)
+  - MaxViT-Tiny @ 384 (hybrid CNN-transformer)
+  - DeiT-III-Small @ 384 (pure transformer)
+  - SwinV2-Base @ 384 (hierarchical transformer)
+
+All backbones expose the same contract:
   - .out_channels: list[int]  (shallow -> deep)
   - forward(x) -> list[Tensor]  (per-stage feature maps, shallow -> deep)
 
 The ARCH_REGISTRY is the single source of truth for architecture metadata.
 Adding a new architecture is a one-line change here, plus a YAML config.
+
+NOTE: EfficientNetV2-S was deliberately excluded from the journal ensemble
+after its BatchNorm running-statistics divergence was identified as the
+root cause of repeated eval-mode logit explosions at the frozen->unfrozen
+phase transition (see saved/logs/effnetv2_root_cause.md). Replacing BN
+with GN fixes the explosion but caused class collapse, so the architecture
+is excluded entirely rather than used with a workaround.
 """
 from dataclasses import dataclass
 from typing import Optional
 
-import timm
 import torch.nn as nn
+
+# timm is imported lazily inside TimmBackbone.__init__ to avoid forcing
+# the torchvision import chain (which is broken on some torch/torchvision
+# version combos, e.g. PyTorch 2.x on Python 3.14). The metadata
+# definitions below don't need timm at all — only model construction does.
 
 
 @dataclass(frozen=True)
@@ -32,6 +48,7 @@ class TimmBackbone(nn.Module):
     def __init__(self, arch: str, pretrained: bool = True, img_size: int | None = None,
                  in_chans: int = 3):
         super().__init__()
+        import timm  # lazy: avoid torchvision import chain at module import time
         kwargs = dict(pretrained=pretrained, features_only=True, in_chans=in_chans)
         if img_size is not None:
             kwargs["img_size"] = (img_size, img_size)
@@ -46,25 +63,39 @@ class TimmBackbone(nn.Module):
 
 # Single source of truth for supported architectures.
 # Add a new architecture = add one line here + create a YAML config.
+# NOTE: All LayerNorm-native for journal-publishable 5-model ensemble.
 ARCH_REGISTRY: dict[str, ArchSpec] = {
+    # --- 5-model LayerNorm-native journal ensemble ---
+    # All accept 384x384 input; three have native 384x384 pretrained weights.
+    # EfficientNetV2-S deliberately excluded: 109 BatchNorm2d layers cause
+    # stale running-stats at the frozen->unfrozen phase transition
+    # (see saved/logs/effnetv2_root_cause.md).
     "convnext_tiny": ArchSpec(
         timm_name="convnext_tiny",
         channels_last=True,   # depthwise convs benefit from channels_last
     ),
-    "efficientnetv2_s": ArchSpec(
-        timm_name="tf_efficientnetv2_s",
-        channels_last=False,  # BN-heavy; standard contiguous works fine
+    "convnext_small": ArchSpec(
+        timm_name="convnext_small.fb_in22k_ft_in1k",  # 22k pretrain, much stronger
+        channels_last=True,
     ),
-    # SwinV2-Tiny @ 256: timm ships pretrained weights as
-    # `swinv2_tiny_window8_256.ms_in1k`. The _ns and _cr variants @ 384
-    # don't have downloadable weights in the registry this environment
-    # can fetch, so we use the standard 256 SwinV2 (window8). Training
-    # input must be 256x256 — set `model.img_size: 256` in the YAML and
-    # the train pipeline handles the resize from 384-preprocessed images.
-    "swin_tiny_patch4_window7_384": ArchSpec(
-        timm_name="swinv2_tiny_window8_256",
+    "maxvit_tiny_tf_384": ArchSpec(
+        timm_name="maxvit_tiny_tf_384",
         channels_last=False,
-        needs_img_size_kwarg=False,
+    ),
+    "deit3_small_patch16_384": ArchSpec(
+        timm_name="deit3_small_patch16_384.fb_in1k",
+        channels_last=False,
+        needs_img_size_kwarg=True,  # DeiT requires explicit img_size
+    ),
+    # SwinV2-Base @ 384 (native ImageNet-22k pretrained at 384, NOT resized):
+    # Microsoft released window12to24 192to384 finetuned checkpoints that
+    # natively train at 384x384 with continuous relative position bias. This
+    # is the strongest LayerNorm-native transformer option at 384 we can
+    # actually download pretrained weights for in this environment.
+    "swinv2_base_window12to24_192to384": ArchSpec(
+        timm_name="swinv2_base_window12to24_192to384.ms_in22k_ft_in1k",
+        channels_last=False,
+        needs_img_size_kwarg=True,
     ),
 }
 
