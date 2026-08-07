@@ -39,10 +39,14 @@ def merge_configs(model_cfg: dict, lodo_cfg: dict) -> dict:
       2. Overlay LODO-axis fields (holdout_source, manifest paths).
       3. Inject LODO manifest paths into BOTH phases' manifest_train/val.
       4. Derive `run_name` from holdout + arch (not stored in either yaml).
+      5. Set per-fold matrix layout for log/checkpoint dirs:
+         saved/logs/<holdout>/<arch>/      and      saved/checkpoints/<holdout>/<arch>/
+         unless the model yaml already specifies a custom path.
+      6. Inject per-fold `seg_dir` if the LODO yaml provides one.
 
     The merged dict matches the legacy monolithic `lodo_<holdout>_<arch>.yaml`
-    shape — `src.training.orchestrate.run_training` doesn't know or care
-    which form produced it.
+    shape (plus the matrix dirs) — `src.training.orchestrate.run_training`
+    doesn't know or care which form produced it.
     """
     merged = _deep_merge(model_cfg, lodo_cfg)
 
@@ -58,4 +62,21 @@ def merge_configs(model_cfg: dict, lodo_cfg: dict) -> dict:
         merged["phases"][phase_name]["manifest_val"] = manifest_val
 
     merged["run_name"] = f"lodo_{holdout}_{arch}"
+
+    # Matrix layout: log_dir / checkpoint_dir under <holdout>/<arch>/.
+    # Only override if the model config is using the standard defaults —
+    # any hand-set custom path is preserved.
+    log_root = model_cfg.get("log_dir", "saved/logs")
+    ckpt_root = model_cfg.get("checkpoint_dir", "saved/checkpoints")
+    if log_root == "saved/logs":
+        merged["log_dir"] = f"saved/logs/{holdout}/{arch}"
+    if ckpt_root == "saved/checkpoints":
+        merged["checkpoint_dir"] = f"saved/checkpoints/{holdout}/{arch}"
+
+    # Per-fold seg_dir: optional in the LODO yaml.
+    if "seg_dir" in lodo_cfg:
+        seg_dir = lodo_cfg["seg_dir"]
+        for phase_name in list(merged.get("phases", {}).keys()):
+            merged["phases"][phase_name]["seg_dir"] = seg_dir
+
     return merged
