@@ -71,7 +71,7 @@ def build_dataloaders(manifest_train, manifest_val, aug_strength, batch_size,
     sampler = None
     shuffle = True
     if use_sqrt_sampler:
-        labels = train_ds.get_labels()
+        labels = train_ds.get_labels().astype(np.int64)
         class_counts = np.bincount(labels, minlength=NUM_CLASSES)
         class_weights = 1.0 / np.sqrt(np.maximum(class_counts, 1))
         sample_weights = class_weights[labels]
