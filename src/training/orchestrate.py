@@ -48,7 +48,11 @@ from src.training.trainer import train_one_epoch, validate_one_epoch
 from src.training import progress as ui
 
 NUM_CLASSES = 5
-NUM_DATALOADER_WORKERS = min(4, os.cpu_count() or 1)
+# Allow env-var override; default to 12 on multi-core hosts (was 4, which
+# caused data-loader-bound training on Eyepacs/Aptos at ~2.5-3s/step for
+# 93k-sample train sets). On a 16-CPU box, 12 workers keeps ~3 cores free
+# for the main process + system; reduces step time by ~2-3x.
+NUM_DATALOADER_WORKERS = int(os.environ.get("NUM_DATALOADER_WORKERS", min(12, os.cpu_count() or 1)))
 
 
 def set_seed(seed: int = 42) -> None:

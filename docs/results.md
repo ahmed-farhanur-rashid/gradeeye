@@ -19,12 +19,14 @@ A bold value in the main cell denotes the best score in its row. An asterisk (\*
 
 The 3-channel RGB baseline establishes the cross-domain reference. Values are QWK on the held-out domain's test set.
 
+**Status (2026-08-11):** Prior numbers wiped — they were generated from a preprocessor-bypass (raw JPEG path) configuration that does not match the methodology's preprocessing pipeline. Restarting from clean state per user instruction. See `docs/refined_todo.md` for the active run plan.
+
 | Held-out source | QWK | 95% CI | Acc | F1 (macro) | AUC (macro) |
 |:----------------|----:|:-------|----:|:----------:|:-----------:|
-| Source A |  |  |  |  |  |
-| Source B |  |  |  |  |  |
-| Source C |  |  |  |  |  |
-| Source D |  |  |  |  |  |
+| EyePACS |  |  |  |  |  |
+| APTOS |  |  |  |  |  |
+| Messidor-2 |  |  |  |  |  |
+| DDR |  |  |  |  |  |
 | **Mean ± SD** |  |  |  |  |  |
 
 **Confusion matrix (summed across folds, normalized by row):**
@@ -37,6 +39,13 @@ The 3-channel RGB baseline establishes the cross-domain reference. Values are QW
 | 3 |  |  |  |  |  |
 | 4 |  |  |  |  |  |
 
+Per-fold raw confusion matrices:
+
+- **EyePACS** (n=88,702, full test set): _pending — see `docs/refined_todo.md`._
+- **APTOS** (n=3,662, full test set): _pending._
+- **Messidor-2** (n=1,744, full test set): _pending._
+- **DDR** (n=12,522, full test set): _pending._
+
 ## 3. Per-Threshold Calibration (Core Diagnostic)
 
 This is the central contribution of the work. ECE is computed on the binary "grade $\geq t$" prediction at each CORN sub-problem, with 10 equal-width bins. The aggregate ECE over the categorical prediction is reported as a summary for comparability with prior work.
@@ -47,10 +56,10 @@ ECE$_t$ is the per-threshold ECE without temperature scaling, on the held-out do
 
 | Held-out source | ECE$_1$ | ECE$_2$ | ECE$_3$ | ECE$_4$ | ECE (aggregate) |
 |:----------------|:-------:|:-------:|:-------:|:-------:|:---------------:|
-| Source A |  |  |  |  |  |
-| Source B |  |  |  |  |  |
-| Source C |  |  |  |  |  |
-| Source D |  |  |  |  |  |
+| EyePACS |  |  |  |  |  |
+| APTOS |  |  |  |  |  |
+| Messidor-2 |  |  |  |  |  |
+| DDR |  |  |  |  |  |
 | **Mean ± SD** |  |  |  |  |  |
 
 ### 3.2 Per-Threshold ECE by Fold (Per-Threshold Temperature Scaling)
@@ -59,10 +68,10 @@ ECE$_t$ is recomputed after fitting a separate temperature parameter per thresho
 
 | Held-out source | ECE$_1$ | ECE$_2$ | ECE$_3$ | ECE$_4$ | ECE (aggregate) |
 |:----------------|:-------:|:-------:|:-------:|:-------:|:---------------:|
-| Source A |  |  |  |  |  |
-| Source B |  |  |  |  |  |
-| Source C |  |  |  |  |  |
-| Source D |  |  |  |  |  |
+| EyePACS |  |  |  |  |  |
+| APTOS |  |  |  |  |  |
+| Messidor-2 |  |  |  |  |  |
+| DDR |  |  |  |  |  |
 | **Mean ± SD** |  |  |  |  |  |
 
 ### 3.3 Per-Threshold ECE by Fold (Single Global Temperature Scaling)
@@ -71,10 +80,10 @@ For comparison: a single temperature parameter fit on the validation set across 
 
 | Held-out source | ECE$_1$ | ECE$_2$ | ECE$_3$ | ECE$_4$ | ECE (aggregate) |
 |:----------------|:-------:|:-------:|:-------:|:-------:|:---------------:|
-| Source A |  |  |  |  |  |
-| Source B |  |  |  |  |  |
-| Source C |  |  |  |  |  |
-| Source D |  |  |  |  |  |
+| EyePACS |  |  |  |  |  |
+| APTOS |  |  |  |  |  |
+| Messidor-2 |  |  |  |  |  |
+| DDR |  |  |  |  |  |
 | **Mean ± SD** |  |  |  |  |  |
 
 ### 3.4 Per-Threshold Calibration: Per-Fold Delta Comparison
@@ -83,18 +92,18 @@ For comparison: a single temperature parameter fit on the validation set across 
 
 | Held-out source | ΔECE$_1$ | ΔECE$_2$ | ΔECE$_3$ | ΔECE$_4$ | ΔECE (aggregate) |
 |:----------------|:--------:|:--------:|:--------:|:--------:|:----------------:|
-| Source A |  |  |  |  |  |
-| Source B |  |  |  |  |  |
-| Source C |  |  |  |  |  |
-| Source D |  |  |  |  |  |
+| EyePACS |  |  |  |  |  |
+| APTOS |  |  |  |  |  |
+| Messidor-2 |  |  |  |  |  |
+| DDR |  |  |  |  |  |
 | **Mean ± SD** |  |  |  |  |  |
 
 | Held-out source | ΔECE$_1$ | ΔECE$_2$ | ΔECE$_3$ | ΔECE$_4$ | ΔECE (aggregate) |
 |:----------------|:--------:|:--------:|:--------:|:--------:|:----------------:|
-| Source A |  |  |  |  |  |
-| Source B |  |  |  |  |  |
-| Source C |  |  |  |  |  |
-| Source D |  |  |  |  |  |
+| EyePACS |  |  |  |  |  |
+| APTOS |  |  |  |  |  |
+| Messidor-2 |  |  |  |  |  |
+| DDR |  |  |  |  |  |
 | **Mean ± SD** |  |  |  |  |  |
 
 ### 3.5 Reliability Diagrams (Per Threshold, Per Fold)
@@ -112,10 +121,10 @@ For each held-out source, the per-threshold positive-class prevalence (fraction 
 
 | Held-out source | P(grade $\geq$ 1) | P(grade $\geq$ 2) | P(grade $\geq$ 3) | P(grade $\geq$ 4) |
 |:----------------|:------------------:|:------------------:|:------------------:|:------------------:|
-| Source A |  |  |  |  |
-| Source B |  |  |  |  |
-| Source C |  |  |  |  |
-| Source D |  |  |  |  |
+| EyePACS |  |  |  |  |
+| APTOS |  |  |  |  |
+| Messidor-2 |  |  |  |  |
+| DDR |  |  |  |  |
 
 ### 3.7 Per-Threshold Calibration Versus Single-Threshold Reporting
 
@@ -123,10 +132,10 @@ Comparison of the per-threshold ECE (the present contribution) to the aggregate 
 
 | Held-out source | max$_t$ ECE$_t$ | min$_t$ ECE$_t$ | Range | Aggregate ECE |
 |:----------------|:---------------:|:---------------:|:-----:|:-------------:|
-| Source A |  |  |  |  |
-| Source B |  |  |  |  |
-| Source C |  |  |  |  |
-| Source D |  |  |  |  |
+| EyePACS |  |  |  |  |
+| APTOS |  |  |  |  |
+| Messidor-2 |  |  |  |  |
+| DDR |  |  |  |  |
 | **Mean ± SD** |  |  |  |  |
 
 ## 4. Auxiliary-Channel Comparison
@@ -139,10 +148,10 @@ Each variant is trained on the same 3-source pool and evaluated on the held-out 
 
 | Held-out source | 3ch baseline | 4ch soft mask | 4ch Sobel | 4ch Tversky | 4ch morph | 5ch soft+Sobel | 5ch Tversky+Sobel |
 |:----------------|:------------:|:-------------:|:---------:|:-----------:|:---------:|:--------------:|:------------------:|
-| Source A |  |  |  |  |  |  |  |
-| Source B |  |  |  |  |  |  |  |
-| Source C |  |  |  |  |  |  |  |
-| Source D |  |  |  |  |  |  |  |
+| EyePACS |  |  |  |  |  |  |  |
+| APTOS |  |  |  |  |  |  |  |
+| Messidor-2 |  |  |  |  |  |  |  |
+| DDR |  |  |  |  |  |  |  |
 | **Mean ± SD** |  |  |  |  |  |  |  |
 | **Δ vs baseline** | — |  |  |  |  |  |  |
 | **p (Δ vs 0)** | — |  |  |  |  |  |  |
@@ -175,7 +184,7 @@ Each variant is trained on the same 3-source pool and evaluated on the held-out 
 
 QWK on the held-out domain's test set, varying only the backbone architecture.
 
-| Backbone | Source A | Source B | Source C | Source D | Mean ± SD | Params (M) |
+| Backbone | EyePACS | APTOS | Messidor-2 | DDR | Mean ± SD | Params (M) |
 |:---------|:--------:|:--------:|:--------:|:--------:|:---------:|:----------:|
 | ConvNeXt-Tiny |  |  |  |  |  |  |
 | ConvNeXt-Small |  |  |  |  |  |  |
@@ -189,10 +198,10 @@ Effect of the 3:1 class-balancing step on the 3-channel baseline.
 
 | Held-out source | QWK (balanced) | QWK (unbalanced) | Δ |
 |:----------------|:--------------:|:----------------:|:-:|
-| Source A |  |  |  |
-| Source B |  |  |  |
-| Source C |  |  |  |
-| Source D |  |  |  |
+| EyePACS |  |  |  |
+| APTOS |  |  |  |
+| Messidor-2 |  |  |  |
+| DDR |  |  |  |
 | **Mean ± SD** |  |  |  |
 
 Per-class F1 with and without balancing (mean across folds):
@@ -211,10 +220,10 @@ The validation-tuned ordinal thresholds (§4.3) place decision boundaries on the
 
 | Held-out source | QWK (default) | QWK (tuned) | Δ |
 |:----------------|:-------------:|:-----------:|:-:|
-| Source A |  |  |  |
-| Source B |  |  |  |
-| Source C |  |  |  |
-| Source D |  |  |  |
+| EyePACS |  |  |  |
+| APTOS |  |  |  |
+| Messidor-2 |  |  |  |
+| DDR |  |  |  |
 | **Mean ± SD** |  |  |  |
 
 ## 8. Segmentation Auxiliary Model
@@ -244,10 +253,10 @@ For each held-out source, the model that achieves the worst QWK is identified an
 
 | Held-out source | Worst variant | QWK | Dominant failure mode |
 |:----------------|:-------------:|:---:|:----------------------|
-| Source A |  |  |  |
-| Source B |  |  |  |
-| Source C |  |  |  |
-| Source D |  |  |  |
+| EyePACS |  |  |  |
+| APTOS |  |  |  |
+| Messidor-2 |  |  |  |
+| DDR |  |  |  |
 
 ## 11. Summary Findings
 

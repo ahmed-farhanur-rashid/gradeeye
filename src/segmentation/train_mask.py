@@ -194,7 +194,9 @@ def evaluate_segmentation(model: nn.Module, samples) -> dict:
             continue
         gt = cv2.resize(gt, (pred.shape[1], pred.shape[0]),
                         interpolation=cv2.INTER_NEAREST)
-        gt_bin = (gt > 127).astype(np.uint8)
+        # IDRiD uses value 76 (not 255) for "lesion present"; DDR uses 0/255.
+        # Use any-nonzero as the binary threshold (>0).
+        gt_bin = (gt > 0).astype(np.uint8)
         d, i = dice_iou(pred, gt_bin)
         dices.append(d)
         ious.append(i)

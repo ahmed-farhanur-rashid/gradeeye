@@ -1,0 +1,4 @@
+holdout_source: messidor2
+manifest_train: data/splits/lodo_unbalanced/lodo_messidor2_train.csv
+manifest_val: data/splits/lodo_unbalanced/lodo_messidor2_val.csv
+manifest_test: data/splits/lodo_unbalanced/lodo_messidor2_test_full.csv

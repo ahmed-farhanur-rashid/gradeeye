@@ -66,7 +66,11 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, ckpt = load_segmenter(args.checkpoint, device)
-    print(f"loaded {args.checkpoint} val_iou={ckpt.get('val_iou'):.4f}")
+    val_iou = ckpt.get("val_iou")
+    val_dice = ckpt.get("best_val_dice", ckpt.get("val_dice"))
+    print(f"loaded {args.checkpoint} "
+          f"val_iou={val_iou if val_iou is not None else float('nan'):.4f} "
+          f"val_dice={val_dice if val_dice is not None else float('nan'):.4f}")
 
     for source in args.sources:
         in_dir = Path(args.root_data) / source

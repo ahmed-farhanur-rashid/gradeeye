@@ -1,3 +1,0 @@
-holdout_source: eyepacs
-manifest_train: data/splits/lodo_eyepacs_train.csv
-manifest_val: data/splits/lodo_eyepacs_val.csv

@@ -188,9 +188,15 @@ def _load_pair(image_path: str, mask_path: str, fov_path: str | None,
         fov = cv2.imread(fov_path, cv2.IMREAD_GRAYSCALE)
         if fov is not None:
             fov = cv2.resize(fov, (size, size), interpolation=cv2.INTER_NEAREST)
-            mask = (mask * (fov > 127)).astype(np.uint8)
+            mask = (mask * (fov > 0)).astype(np.uint8)
 
-    return _normalize(img), torch.from_numpy((mask > 127).astype(np.float32)).unsqueeze(0)
+    # IMPORTANT: IDRiD's GT masks use value 76 (not 255) for "lesion present";
+    # DDR uses 0/255. A threshold of 127 misses IDRiD's positive pixels
+    # entirely. Use any-nonzero as the binary threshold (>0).
+    if mask.max() <= 0:
+        # All-zero mask — treat as empty (no positive pixels), still valid training signal.
+        pass
+    return _normalize(img), torch.from_numpy((mask > 0).astype(np.float32)).unsqueeze(0)
 
 
 def _dice_loss(logits: torch.Tensor, target: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:

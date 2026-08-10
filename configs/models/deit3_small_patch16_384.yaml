@@ -31,13 +31,13 @@ phases:
     freeze_backbone: false
     aug_strength: light
     batch_size: 16
-    num_epochs: 35
+    num_epochs: 20
     head_lr: 5.0e-05
     backbone_lr: 5.0e-06
     weight_decay: 0.01
     warmup_epochs: 2
     scheduler: cosine
     min_epochs: 8
-    overfitting_patience: 7
+    overfitting_patience: 5
     img_size: 384
     use_sqrt_sampler: true

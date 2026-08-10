@@ -23,11 +23,31 @@ where `<experiment_name>` is the variant identifier (`baseline_3ch`, `four_ch_so
 
 **Rule 4 — All previously generated logs, checkpoints, and segmentation pools have been deleted from disk.** The `saved/logs/`, `saved/checkpoints/`, AND `data/processed/segmentation_pooled*/` directories were wiped before this runbook was written. Nothing previously stored is recoverable. The only authoritative numerical record of the experiments is what you produce now, logged into `saved/` *and* transcribed into `docs/results.md`. The segmentation pools must be regenerated (§1.3) before any 4-channel or 5-channel variant can be run, because the auxiliary channels are loaded from those pools at training time.
 
-**Rule 5 — Stop and request permission before any decision that picks a winner.** Section 1.16 below is the permission gate. Do not proceed past it without an explicit "yes" from the user.
+**Rule 5 — Stop and request permission before any decision that picks a winner.** §1.13 below is the permission gate. Do not proceed past it without an explicit "yes" from the user.
 
 ## 1. Sequence of Work
 
 The experiments are ordered by dependency. Do not skip steps. Do not run steps out of order. The dependency graph is documented inline.
+
+**Execute in this order, period:**
+
+1. **§1.1 Setup Verification** — verify data on disk.
+2. **§1.2 Configuration Verification** — smoke-test all 140 cells × 5 filenames = 700 filenames, zero collisions.
+3. **§1.3 Segmentation Auxiliary Model** — train the U-Net (BCE+Dice + Tversky on DDR + IDRiD-train), generate all 4 aux pools, verify DDR test coverage. **This is the long blocking step (~4–6 hours on GPU); start it in the background as soon as §1.1/§1.2 pass.**
+4. **§1.4 Step A** — Unbalanced baseline (4 runs).
+5. **§1.5 Step B** — Balanced baseline (4 runs). **Main run.**
+6. **§1.6 Per-threshold calibration diagnostic** on Step B checkpoints (eval-only).
+7. **§1.7 Step C** — Aux-channel ablation (24 runs).
+8. **§1.8 Step C+** — Per-lesion-type ablation (20 runs, optional).
+9. **§1.9 Step D** — Threshold tuning (post-hoc, eval-only).
+10. **§1.10 Step E** — Seed sensitivity (conditional, 0–6 runs).
+11. **§1.11 Step F** — Failure mode analysis (doc work).
+12. **§1.12 Step F.5** — Summary findings draft (doc work).
+13. **⛔ §1.13 PERMISSION GATE — STOP, ASK USER** for the winning (variant, backbone) config.
+14. **§1.14 Step G** — Headline run (up to 16 runs on the other 4 backbones). **Main contribution.**
+15. **§1.15 Step H** — Cross-backbone ensemble phase (eval-only, additive on top of Step G).
+
+**Do not display these steps out of order.** A todo-list UI that alphabetizes them is misleading; the dependency order is the run order.
 
 ### 1.1 Setup Verification
 

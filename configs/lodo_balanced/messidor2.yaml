@@ -1,4 +1,4 @@
 holdout_source: messidor2
 manifest_train: data/train/eyepacs_aptos_ddr/manifest.csv
 manifest_val: data/val/eyepacs_aptos_ddr/manifest.csv
-manifest_test: data/test/messidor2/manifest.csv
+manifest_test: data/splits/lodo_unbalanced/lodo_messidor2_test_full.csv
