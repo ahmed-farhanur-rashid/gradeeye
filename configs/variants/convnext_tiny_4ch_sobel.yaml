@@ -1,0 +1,9 @@
+log_dir: saved/logs/four_ch_sobel
+checkpoint_dir: saved/checkpoints/four_ch_sobel
+model:
+  in_chans: 4
+phases:
+  phase1_frozen:
+    seg_dir: data/processed/segmentation_pooled_sobel
+  phase2_full_training:
+    seg_dir: data/processed/segmentation_pooled_sobel

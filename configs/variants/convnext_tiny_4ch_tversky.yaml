@@ -1,0 +1,9 @@
+log_dir: saved/logs/four_ch_tversky
+checkpoint_dir: saved/checkpoints/four_ch_tversky
+model:
+  in_chans: 4
+phases:
+  phase1_frozen:
+    seg_dir: data/processed/segmentation_pooled_tversky
+  phase2_full_training:
+    seg_dir: data/processed/segmentation_pooled_tversky

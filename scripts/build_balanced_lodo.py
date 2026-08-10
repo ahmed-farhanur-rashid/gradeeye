@@ -110,6 +110,35 @@ def load_messidor2() -> pd.DataFrame:
     return df[["image_path", "label", "source"]]
 
 
+def load_ddr() -> pd.DataFrame:
+    """DDR: 6-class grading scheme where label 5 = ungradable.
+
+    We drop ungradable rows so the manifest is exactly 5-class ICDR (0-4),
+    matching EyePACS / APTOS / Messidor-2. Image paths point at the raw
+    DDR .jpg files (the preprocessing step will resolve them to
+    data/processed/ddr/*.png downstream).
+    """
+    base = ROOT / "data/ddr/DDR-dataset/DR_grading"
+    parts = []
+    for split in ("train", "valid", "test"):
+        txt = base / f"{split}.txt"
+        if not txt.exists():
+            print(f"  DDR {split}: missing {txt}, skipping")
+            continue
+        df = pd.read_csv(txt, sep=r"\s+", header=None,
+                         names=["image_id", "label"])
+        before = len(df)
+        df = df[df["label"] != 5].reset_index(drop=True)
+        print(f"  DDR {split}: {len(df)} gradable (dropped {before - len(df)} ungradable)")
+        df["image_path"] = df["image_id"].apply(lambda x: f"{base}/{split}/{x}")
+        parts.append(df[["image_path", "label"]])
+    if not parts:
+        raise FileNotFoundError(f"No DDR label files found under {base}")
+    out = pd.concat(parts, ignore_index=True)
+    out["source"] = "ddr"
+    return out[["image_path", "label", "source"]]
+
+
 def build_3to1(df: pd.DataFrame, source: str) -> pd.DataFrame:
     counts = df["label"].value_counts().reindex(range(NUM_CLASSES), fill_value=0)
     rare = int(counts.min())
@@ -159,8 +188,11 @@ def main() -> None:
     print(f"  APTOS: {len(aptos)}")
     messidor = load_messidor2()
     print(f"  Messidor-2: {len(messidor)}")
+    ddr = load_ddr()
+    print(f"  DDR: {len(ddr)}")
 
-    sources = {"eyepacs": eyepacs, "aptos": aptos, "messidor2": messidor}
+    sources = {"eyepacs": eyepacs, "aptos": aptos, "messidor2": messidor, "ddr": ddr}
+    all_source_names = tuple(sources.keys())
     balanced: dict[str, pd.DataFrame] = {}
 
     print("\n=== Build 3:1 subsets ===")
@@ -178,23 +210,24 @@ def main() -> None:
 
     print("\n=== Build LODO fold folders ===")
     summary = []
-    for holdout in ("eyepacs", "aptos", "messidor2"):
-        train_src = [s for s in ("eyepacs", "aptos", "messidor2") if s != holdout]
-        a, b = train_src
-        pool = pd.concat([balanced[a], balanced[b]], ignore_index=True)
+    # 4-source LODO: each fold holds out 1 source, trains on the other 3
+    # (the 3-source folders train/<a>_<b>/ become train/<a>_<b>_<c>/).
+    for holdout in all_source_names:
+        train_src = [s for s in all_source_names if s != holdout]
+        pool = pd.concat([balanced[s] for s in train_src], ignore_index=True)
         train_df, val_df = split_train_val(pool)
 
-        train_dir = TRAIN_DIR / f"{a}_{b}"
-        val_dir = VAL_DIR / f"{a}_{b}"
+        train_dir = TRAIN_DIR / "_".join(train_src)
+        val_dir = VAL_DIR / "_".join(train_src)
         test_dir = TEST_DIR / holdout
 
-        write_split(train_dir, train_df, f"train {a}+{b}")
-        write_split(val_dir, val_df, f"val {a}+{b}")
+        write_split(train_dir, train_df, f"train {'+'.join(train_src)}")
+        write_split(val_dir, val_df, f"val {'+'.join(train_src)}")
         write_split(test_dir, balanced[holdout], f"test {holdout} (3:1 cap)")
 
         summary.append({
             "holdout": holdout,
-            "train": f"{a}_{b}",
+            "train": "_".join(train_src),
             "n_train": int(len(train_df)),
             "n_val": int(len(val_df)),
             "n_test": int(len(balanced[holdout])),

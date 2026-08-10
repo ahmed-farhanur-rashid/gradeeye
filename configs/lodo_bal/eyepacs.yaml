@@ -1,4 +1,0 @@
-holdout_source: eyepacs
-manifest_train: data/train/aptos_messidor2/manifest.csv
-manifest_val: data/val/aptos_messidor2/manifest.csv
-manifest_test: data/test/eyepacs/manifest.csv

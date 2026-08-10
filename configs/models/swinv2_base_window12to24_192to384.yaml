@@ -30,7 +30,7 @@ phases:
   phase2_full_training:
     freeze_backbone: false
     aug_strength: light
-    batch_size: 12
+    batch_size: 8
     num_epochs: 35
     head_lr: 5.0e-05
     backbone_lr: 5.0e-06

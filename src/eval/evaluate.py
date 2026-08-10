@@ -117,7 +117,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-ema", action="store_true")
     parser.add_argument("--tta", action="store_true")
     parser.add_argument("--img-size", type=int, default=None)
-    parser.add_argument("--seg-dir", default=None)
+    parser.add_argument("--seg-dir", default=None,
+                        help="Segmentation dir for 4ch models. For 5ch, "
+                             "pass --seg-dir2 with the second aux channel.")
+    parser.add_argument("--seg-dir2", default=None,
+                        help="Optional second seg dir (5-channel models). "
+                             "Both are concatenated as channels 4 and 5.")
     parser.add_argument("--log-dir", default="saved/logs")
     parser.add_argument("--device", default=None)
     return parser
@@ -129,6 +134,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Evaluating: {os.path.basename(args.checkpoint)} on {args.manifest}")
     print(f"TTA: {args.tta}, Thresholds: {args.thresholds or 'argmax (none)'}")
 
+    seg_dirs = [d for d in (args.seg_dir, args.seg_dir2) if d]
+    seg_dir_arg = seg_dirs if len(seg_dirs) > 1 else (seg_dirs[0] if seg_dirs else None)
+
     result = evaluate_checkpoint(
         args.checkpoint,
         args.manifest,
@@ -137,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         use_tta=args.tta,
         thresholds_path=args.thresholds,
         img_size=args.img_size,
-        seg_dir=args.seg_dir,
+        seg_dir=seg_dir_arg,
         device=device,
     )
     arch = result["model_arch"]

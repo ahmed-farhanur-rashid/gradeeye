@@ -63,10 +63,25 @@ def set_seed(seed: int = 42) -> None:
 def build_dataloaders(manifest_train, manifest_val, aug_strength, batch_size,
                        seg_dir=None, img_size=None, use_sqrt_sampler=False):
     """Build train/val dataloaders. Optionally uses sqrt-frequency WeightedRandomSampler."""
-    train_ds = DRDataset(manifest_train, transform=build_train_transforms(aug_strength, img_size=img_size),
-                          seg_dir=seg_dir)
-    val_ds = DRDataset(manifest_val, transform=build_eval_transforms(img_size=img_size),
-                        seg_dir=seg_dir)
+    # Count aux channels so the transform split knows how many extras to
+    # keep out of the color-jitter path. 0 for RGB-only, 1 for 4ch, 2 for 5ch.
+    if isinstance(seg_dir, (list, tuple)):
+        extra_channels = len(seg_dir)
+    elif seg_dir:
+        extra_channels = 1
+    else:
+        extra_channels = 0
+    train_ds = DRDataset(
+        manifest_train,
+        transform=build_train_transforms(aug_strength, img_size=img_size,
+                                          extra_channels=extra_channels),
+        seg_dir=seg_dir,
+    )
+    val_ds = DRDataset(
+        manifest_val,
+        transform=build_eval_transforms(img_size=img_size),
+        seg_dir=seg_dir,
+    )
 
     sampler = None
     shuffle = True

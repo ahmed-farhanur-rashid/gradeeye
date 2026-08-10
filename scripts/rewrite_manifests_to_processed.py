@@ -12,18 +12,23 @@ SOURCE_PATTERNS = {
     "eyepacs": "data/raw/eyepacs/",
     "aptos": "data/raw/aptos/",
     "messidor2": "data/raw/messidor2/",
+    "ddr": "data/ddr/DDR-dataset/DR_grading/",
 }
 
+# 4-source LODO: 4 holdouts × 3 manifests each = 12 manifests.
 FOLD_MANIFESTS = [
-    "data/train/aptos_messidor2/manifest.csv",
-    "data/val/aptos_messidor2/manifest.csv",
+    "data/train/aptos_messidor2_ddr/manifest.csv",
+    "data/val/aptos_messidor2_ddr/manifest.csv",
     "data/test/eyepacs/manifest.csv",
-    "data/train/eyepacs_messidor2/manifest.csv",
-    "data/val/eyepacs_messidor2/manifest.csv",
+    "data/train/eyepacs_messidor2_ddr/manifest.csv",
+    "data/val/eyepacs_messidor2_ddr/manifest.csv",
     "data/test/aptos/manifest.csv",
-    "data/train/eyepacs_aptos/manifest.csv",
-    "data/val/eyepacs_aptos/manifest.csv",
+    "data/train/eyepacs_aptos_ddr/manifest.csv",
+    "data/val/eyepacs_aptos_ddr/manifest.csv",
     "data/test/messidor2/manifest.csv",
+    "data/train/eyepacs_aptos_messidor2/manifest.csv",
+    "data/val/eyepacs_aptos_messidor2/manifest.csv",
+    "data/test/ddr/manifest.csv",
 ]
 
 
@@ -35,10 +40,10 @@ def main() -> None:
         new_paths = []
         for p in df["image_path"]:
             if "/" in p:
-                # raw path: data/raw/<source>/...; rewrite to processed
+                # raw path: data/{raw,ddr}/<source>/...; rewrite to processed
                 for src, marker in SOURCE_PATTERNS.items():
                     if marker in p:
-                        fname = Path(p).name.replace(".jpeg", ".png")
+                        fname = Path(p).name.replace(".jpeg", ".png").replace(".jpg", ".png")
                         new_paths.append(f"data/processed/{src}/{fname}")
                         break
                 else:

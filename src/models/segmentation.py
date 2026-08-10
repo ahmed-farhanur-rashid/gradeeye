@@ -52,34 +52,43 @@ class UNetVessel(nn.Module):
         enc_channels = self.encoder.feature_info.channels()  # e.g. [32, 24, 40, 112, 320] for B0
 
         # Decoder: progressively upsample and concat with encoder skip features.
-        self.up4 = nn.ConvTranspose2d(enc_channels[4], 256, 2, stride=2)
-        self.dec4 = ConvBlock(256 + enc_channels[3], 256)
+        # Encoder reductions are [2, 4, 8, 16, 32] so 5 upsamples recover input res.
+        self.up5 = nn.ConvTranspose2d(enc_channels[4], 256, 2, stride=2)
+        self.dec5 = ConvBlock(256 + enc_channels[3], 256)
 
-        self.up3 = nn.ConvTranspose2d(256, 128, 2, stride=2)
-        self.dec3 = ConvBlock(128 + enc_channels[2], 128)
+        self.up4 = nn.ConvTranspose2d(256, 128, 2, stride=2)
+        self.dec4 = ConvBlock(128 + enc_channels[2], 128)
 
-        self.up2 = nn.ConvTranspose2d(128, 64, 2, stride=2)
-        self.dec2 = ConvBlock(64 + enc_channels[1], 64)
+        self.up3 = nn.ConvTranspose2d(128, 64, 2, stride=2)
+        self.dec3 = ConvBlock(64 + enc_channels[1], 64)
 
-        self.up1 = nn.ConvTranspose2d(64, 32, 2, stride=2)
-        self.dec1 = ConvBlock(32 + enc_channels[0], 32)
+        self.up2 = nn.ConvTranspose2d(64, 32, 2, stride=2)
+        self.dec2 = ConvBlock(32 + enc_channels[0], 32)
+
+        # Final upsample to match input resolution (no skip from encoder —
+        # we already exhausted all 5 levels).
+        self.up1 = nn.ConvTranspose2d(32, 32, 2, stride=2)
+        self.dec1 = ConvBlock(32, 32)
 
         self.final = nn.Conv2d(32, 1, kernel_size=1)
 
     def forward(self, x):
         skips = self.encoder(x)  # list of 5 feature maps, shallow -> deep
         # Bottleneck = deepest features (index 4)
-        d = self.up4(skips[4])
-        d = self.dec4(torch.cat([d, skips[3]], dim=1))
+        d = self.up5(skips[4])
+        d = self.dec5(torch.cat([d, skips[3]], dim=1))
+
+        d = self.up4(d)
+        d = self.dec4(torch.cat([d, skips[2]], dim=1))
 
         d = self.up3(d)
-        d = self.dec3(torch.cat([d, skips[2]], dim=1))
+        d = self.dec3(torch.cat([d, skips[1]], dim=1))
 
         d = self.up2(d)
-        d = self.dec2(torch.cat([d, skips[1]], dim=1))
+        d = self.dec2(torch.cat([d, skips[0]], dim=1))
 
         d = self.up1(d)
-        d = self.dec1(torch.cat([d, skips[0]], dim=1))
+        d = self.dec1(d)
 
         return self.final(d)  # (B, 1, H, W) logits; apply sigmoid externally
 

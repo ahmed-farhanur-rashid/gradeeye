@@ -1,362 +1,259 @@
 # Methodology
 
-This section details the design of the diabetic retinopathy (DR) grading framework. The framework classifies fundus images into five ordinal severity grades defined by the International Clinical Diabetic Retinopathy (ICDR) scale: Grade 0 (No DR), Grade 1 (Mild), Grade 2 (Moderate), Grade 3 (Severe), and Grade 4 (Proliferative DR). The pipeline combines circular retina domain cropping, Ben Graham local-average color subtraction, green-channel Contrast Limited Adaptive Histogram Equalization (CLAHE), a ConvNeXt-Tiny feature backbone augmented with Convolutional Block Attention Modules (CBAM), and a Conditional Ordinal Regression for Neural Networks (CORN) classifier head.
+## 1. Problem Statement
 
-## 1. Problem formulation and ordinal classification via CORN
+Diabetic retinopathy (DR) is a leading cause of preventable blindness worldwide. Automated grading of fundus photographs into severity levels is a clinically meaningful screening task, but conventional training pipelines typically assume that the training and deployment populations are drawn from the same data distribution. In practice, fundus images are acquired from heterogeneous devices, patient populations, and clinical sites, which induces substantial **domain shift** between training and deployment cohorts. Models that achieve strong in-domain accuracy frequently degrade catastrophically when applied to out-of-domain imagery.
 
-Standard categorical classification using cross-entropy loss treats DR grades as independent nominal classes, ignoring the inherent severity hierarchy. Conversely, single-output scalar regression imposes a rigid metric distance across grades that may not match physiological disease progression. We resolve this by framing 5-class DR grading as a set of $K = 4$ binary decision thresholds using Conditional Ordinal Regression for Neural Networks (CORN).
+A growing body of recent work has established that domain shift matters specifically for DR grading: the GDRNet / GDRBench line of work (Che et al., 2023) introduced an eight-dataset public benchmark with explicit leave-one-domain-out and extreme single-domain-generalization protocols and showed that standard training recipes suffer large accuracy and AUC gaps under cross-domain evaluation. The DRGen work (Atwany & Yaqub, 2022) framed the cross-domain gap as a generalization problem and proposed training-time interventions to seek flatter minima. The DECO line of work (Xia et al., 2024) addressed the same gap through representation disentanglement of retinal and domain-specific latents. These contributions establish that **closing the cross-domain accuracy gap** is an active research line; methods to achieve it now exist (FundusAug, hybrid losses, domain-class-aware rebalancing, representation disentanglement, augmentation-based domain generalization).
 
-Let $\mathcal{D} = \{(x_i, y_i)\}_{i=1}^N$ denote a training dataset of fundus images $x_i$ and ordinal labels $y_i \in \{0, 1, 2, 3, 4\}$. The target space is decomposed into $K = 4$ binary sub-tasks corresponding to the rank thresholds $k \in \{0, 1, 2, 3\}$. For a given threshold $k$, evaluation is strictly conditioned on the sub-population of samples that reached or exceeded severity level $k$:
+This work does not propose a new method to close the cross-domain accuracy gap. A separate, less-studied question is whether the **probabilities** that these models produce are trustworthy under domain shift — that is, whether the predicted confidences reflect the true posterior probability of the predicted grade. Recently, El Bellaj et al. (2026) proposed an evidential ordinal regression head and reported that uncertainty under domain shift is miscalibrated, and Sheng, Dong, Wu & Liang (2026, "ORDER-DR") reported that scalar expected-calibration error on a binarized referable-DR endpoint nearly quadruples from in-distribution (0.049) to external validation (0.160) on the same disease. These are the closest existing signals that calibration degrades under cross-dataset shift in DR grading.
 
-$$S_k = \{i \in \{1, \dots, N\} \mid y_i \ge k\}$$
+A converging line of evidence comes from Poyrazer, Yağcı & Erten (2026), who benchmarked three pretrained vision backbones as frozen feature extractors on APTOS development and Messidor-2 external validation and reported that **temperature scaling — the standard post-hoc calibration remedy — fails under cross-dataset shift** in DR grading: ECE was reported below 0.022 on the development set but in the range 0.086–0.149 on the external set after re-scaling, i.e. the recalibration step did not transfer. The same study independently reported that the Mild (grade 1) class is catastrophically vulnerable under shift, with F1 = 0.000 for two of three encoders and F1 = 0.153 for the best. This is the strongest single piece of prior evidence that *aggregate* calibration tools are inadequate under DR cross-dataset shift, and that the *earliest clinically meaningful severity grade* is disproportionately affected.
 
-For each sample $i \in S_k$, the binary target $t_{i,k}$ indicates whether the severity exceeds threshold $k$:
+The present work addresses a finer-grained version of the calibration question. The CORN-style ordinal regression head (Cao, Mirjalili & Raschka, 2020) decomposes a $K$-class ordinal problem into $K-1$ independent binary sub-problems, one per ordinal threshold. Recent calibration reports in the DR literature — including those in the papers cited above — report a single aggregate expected-calibration error on the final categorical prediction, or a single scalar on a binarized referable endpoint. The aggregate hides the question: **each of the CORN sub-problems corresponds to a different class-imbalance regime, and their calibration may diverge under domain shift.** This work asks whether the per-threshold calibration of a CORN ordinal regression head is jointly degraded and structurally divergent under true leave-one-domain-out generalization across multiple DR domains, and whether that divergence is interpretable in terms of the per-threshold class distribution. The Mild (grade 1) threshold is the analytically prior target because the prior literature independently flags it under both ordinal and non-ordinal mechanisms.
 
-$$t_{i,k} = \begin{cases} 1 & \text{if } y_i > k \\ 0 & \text{if } y_i = k \end{cases}$$
+## 2. Task Definition
 
-The neural network outputs $K = 4$ raw logits $z(x) = [z_0, z_1, z_2, z_3] \in \mathbb{R}^4$. Applying the logistic sigmoid function $\sigma(\cdot)$ yields conditional probabilities $p_k(x)$:
+### 2.1 Ordinal Grading
 
-$$p_k(x) = P(y > k \mid y \ge k, x) = \sigma(z_k)$$
+The task is formulated as **5-class ordinal classification** of fundus photographs into the international clinical DR severity scale:
 
-The unconditional probability of exceeding threshold $k$ is computed by cumulative multiplication over preceding conditional probabilities:
+| Grade | Label | Clinical description |
+|------:|:-----:|:---------------------|
+| 0 | No DR | No abnormalities |
+| 1 | Mild NPDR | Microaneurysms only |
+| 2 | Moderate NPDR | More than microaneurysms but less than severe |
+| 3 | Severe NPDR | Extensive intraretinal hemorrhages |
+| 4 | Proliferative DR | Neovascularization or vitreous hemorrhage |
 
-$$P(y > k \mid x) = \prod_{j=0}^{k} p_j(x) = \prod_{j=0}^{k} \sigma(z_j)$$
+The ordinal nature of the labels is exploited through the choice of loss function (see §4.4).
 
-Because $p_j(x) \in (0, 1)$ for all $j$, the product $\prod_{j=0}^k p_j(x)$ is monotonically non-increasing with respect to $k$:
+### 2.2 Out-of-Domain Evaluation Protocol
 
-$$P(y > 0 \mid x) \ge P(y > 1 \mid x) \ge P(y > 2 \mid x) \ge P(y > 3 \mid x)$$
+Each model is trained on a union of $N-1$ domains and evaluated on the held-out $N$-th domain. The training sources are pooled and class-balanced, then partitioned into a training set and a stratified validation set. The held-out domain contributes only to the test set. Reported metrics are computed exclusively on the held-out domain's test partition, which the model never observed in either training or model selection.
 
-This monotonic ordering holds by mathematical construction regardless of network weights, preventing threshold probability uncrossing during inference.
+This protocol is a deliberate subset of the larger GDRBench benchmark (Che et al., 2023), restricted to the four fundus domains used here. The choice of four domains is a practical throughput constraint, not a methodological one; the same analysis extends to the full eight-dataset pool as an explicit follow-up.
 
-The CORN loss function $L_{\text{CORN}}$ is the average binary cross-entropy across all valid conditional sub-problems:
+The LODO protocol is **strictly stronger** than the per-domain test protocol used by DRGen (Atwany & Yaqub, 2022) and the single-pooled-split protocol used by El Bellaj et al. (2026), both of which allow training-time exposure to samples from the same population as the test set. Strict LODO is the only protocol that rules out in-distribution leakage into the test partition.
 
-$$L_{\text{CORN}}(z, y) = \frac{1}{K} \sum_{k=0}^{K-1} \left( \frac{1}{|S_k|} \sum_{i \in S_k} w_{i,k} \cdot \ell_{\text{BCE}}(z_{i,k}, t_{i,k}) \right)$$
+## 3. Data
 
-where $\ell_{\text{BCE}}(z, t) = - [t \log \sigma(z) + (1-t) \log (1-\sigma(z))]$, and $w_{i,k}$ is a sample-specific weight derived from class imbalance mitigation.
+### 3.1 Sources
 
-At inference, the predicted ordinal class grade $\hat{y} \in \{0, 1, 2, 3, 4\}$ is obtained by counting the number of unconditional threshold probabilities exceeding $0.5$:
+Four publicly available fundus photograph datasets are used as the source domains. They differ in:
 
-$$\hat{y} = \sum_{k=0}^{K-1} \mathbb{I}\left(P(y > k \mid x) > 0.5\right)$$
+- **Acquisition device** (different camera manufacturers and models)
+- **Resolution** (ranging from approximately 640×480 to over 3000×3000 pixels)
+- **Patient population** (geographic, demographic, and referral-pattern heterogeneity)
+- **Native grading scheme** (two datasets use the 5-class scale directly; one uses a coarser scheme that is mapped to the 5-class scale; one uses a 6-class scheme that includes an "ungradable" category which is filtered out to maintain 5-class consistency)
 
-To extract a full 5-class probability distribution $P(y = c \mid x)$ for receiver operating characteristic (ROC) analysis and model ensembling, we evaluate:
+The four-source pool is a strict subset of GDRBench's eight-source pool; the four sources used here are the ones with the largest public corpora and the clearest 5-class or 5-class-mappable grading scheme. The remaining four GDRBench sources are not used in this study; their inclusion is a follow-up.
 
-$$P(y = c \mid x) = \begin{cases} 
-1 - P(y > 0 \mid x) & \text{for } c = 0 \\
-P(y > c-1 \mid x) - P(y > c \mid x) & \text{for } c \in \{1, 2, 3\} \\
-P(y > 3 \mid x) & \text{for } c = 4
-\end{cases}$$
+### 3.2 Class Balancing
 
-## 2. Fundus image preprocessing pipeline
+The four sources exhibit substantially different class distributions. A naive pool would be dominated by the source whose No-DR class is largest (typically an order of magnitude more samples than the rarest class), biasing the model toward the majority class and away from the minority classes that are clinically most important to detect.
 
-Fundus images collected across clinical environments vary in illumination, field of view, camera sensor properties, and background padding. We execute a deterministic, multi-stage image preprocessing sequence prior to model training to standardize spatial and photometric parameters.
+To control for this, training-pool class counts are **balanced to a 3:1 ratio** (most populous class subsampled to at most three times the rarest class), with downsampling only — no upsampling, no synthetic augmentation beyond what is described in §4.2. The 3:1 ratio is chosen over a stricter 1:1 ratio to retain a usable training set size while still materially reducing majority-class dominance.
 
-```
-Raw Image -> Boundary Detection & Crop -> Pad to Square -> Resize (384x384)
-          -> Ben Graham Subtraction -> Green-channel CLAHE -> Circular Mask
-          -> Per-source Normalization
-```
+The 3:1 ratio is itself a hyperparameter. The contribution of the balancing step is reported separately as an ablation (§7.4).
 
-### 2.1. Spatial cropping and aspect-ratio preservation
-Background pixels outside the circular fundus disc are removed using intensity thresholding. Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input BGR image. A binary mask $M_{\text{bg}}$ is formed by thresholding the grayscale representation $I_{\text{gray}}$ at intensity $T = \max(1, \lfloor 0.08 \times 255 \rfloor) = 20$:
+### 3.3 Grading-Scheme Reconciliation
 
-$$M_{\text{bg}}(u, v) = \mathbb{I}(I_{\text{gray}}(u, v) > T)$$
+Where the native grading scheme differs from the 5-class target, the following reconciliations are applied:
 
-Small noise specks are filtered using morphological opening followed by morphological closing with a $5 \times 5$ square structuring element. The bounding box $(x, y, w, h)$ surrounding the largest external contour of $M_{\text{bg}}$ is extracted. If $w < 0.1 W$ or $h < 0.1 H$, detection is discarded and the full canvas dimensions are used.
+- Coarser schemes are mapped to the 5-class scale using the dataset's published correspondence table.
+- Finer schemes that include an "ungradable" label are processed by **excluding** ungradable samples entirely. No image is relabeled to compensate; the ungradable class is treated as a quality-control filter rather than a sixth class.
 
-The image is cropped to $I[y:y+h, x:x+w]$. To prevent aspect-ratio distortion of retinal structures, the crop is centered onto a square black canvas of dimension $S \times S$, where $S = \max(h, w)$. The padded image is then resized to $384 \times 384$ pixels using area-based interpolation (`cv2.INTER_AREA`).
+After reconciliation, every image in the combined corpus carries a label in $\{0, 1, 2, 3, 4\}$.
 
-### 2.2. Illumination correction and contrast enhancement
-Uneven clinical lighting and vignetting are suppressed using Ben Graham local-average color subtraction. A Gaussian-blurred image $\mathcal{G}_{\sigma}(I)$ is computed with standard deviation $\sigma = W_{\text{img}} / 10.0 = 38.4$ pixels. The color-corrected image $I_{\text{BG}}$ is generated by weighted blending:
+### 3.4 Train / Validation / Test Split
 
-$$I_{\text{BG}} = \text{clip}\left(4.0 \cdot I - 4.0 \cdot \mathcal{G}_{\sigma}(I) + 128.0, \, 0, \, 255\right)$$
+For each LODO fold:
 
-Following local color subtraction, Contrast Limited Adaptive Histogram Equalization (CLAHE) is applied exclusively to the green ($G$) channel of $I_{\text{BG}}$. The green channel provides maximum absorption contrast for hemoglobin, enhancing microaneurysms, hemorrhages, and hard exudates. The CLAHE configuration uses a clip limit of $2.0$ over an $8 \times 8$ tile grid.
+- **Training set:** all sources except the held-out one, post-class-balancing, stratified by label.
+- **Validation set:** a stratified subsample (10%) of the same pool, drawn from the same sources as training, used for model selection (early stopping, learning-rate scheduling, threshold tuning).
+- **Test set:** the held-out source's entire labeled set, optionally subsampled to a matched-size subset per source for cross-fold comparability.
 
-To eliminate border artifacts introduced by local filtering, a circular mask of radius $R = \lfloor 384 / 2 \rfloor - 2 = 190$ pixels centered at $(192, 192)$ is applied, setting all exterior pixels to zero.
+The held-out source is never observed during training or model selection.
 
-### 2.3. Per-source normalization
-Retinal images exhibit systematic distribution shifts depending on the acquisition device. Rather than pooling global dataset statistics, channel-wise mean $\mu_{\text{source}} \in \mathbb{R}^3$ and standard deviation $\sigma_{\text{source}} \in \mathbb{R}^3$ are computed independently for each image source (EyePACS, APTOS 2019, Messidor-2) in RGB order across normalized float values in $[0, 1]$:
+## 4. Model Architecture and Training
 
-$$I_{\text{norm}} = \frac{I_{\text{RGB}} - \mu_{\text{source}}}{\sigma_{\text{source}}}$$
+### 4.1 Backbone
 
-## 3. Network architecture and attention integration
+Five convolutional and transformer backbones are evaluated as the feature extractor:
 
-The primary feature extractor is ConvNeXt-Tiny, pre-trained on ImageNet-1k. ConvNeXt-Tiny consists of four hierarchical stages producing feature maps with channel depths $[96, 192, 384, 768]$.
+- ConvNeXt-Tiny
+- ConvNeXt-Small
+- DeiT-3 Small (384-resolution variant)
+- MaxViT Tiny (384-resolution variant)
+- SwinV2-Base (192→384 transfer)
 
-```
-Input (3x384x384) -> ConvNeXt Stages 0 & 1 -> Stage 2 (384 ch) + CBAM
-                 -> Stage 3 (768 ch) + CBAM -> Projection Head -> CORN Logits (4)
-```
+All backbones are initialized from publicly published ImageNet-pretrained weights and adapted to the 5-class ordinal target via a domain-specific head described in §4.3.
 
-### 3.1. Convolutional Block Attention Module (CBAM)
-To focus network capacity on localized retinal lesions rather than peripheral background structures, Convolutional Block Attention Modules (CBAM) are integrated into the final two backbone stages (Stage 2 with 384 channels and Stage 3 with 768 channels). Early backbone stages retain uncalibrated spatial representations to preserve generic edge features.
+A convolutional block attention module (CBAM) is appended after the backbone feature map to recalibrate channel-wise and spatial feature responses. The number of CBAM stages is a hyperparameter; the default is two.
 
-CBAM sequentially applies channel attention $M_c(F)$ and spatial attention $M_s(F')$ to an input feature map $F \in \mathbb{R}^{C \times H \times W}$.
+The backbone family is intentionally wide to test whether the per-threshold calibration findings of §5.3 are an architectural artifact or a property of the task. Recent work (PRISM-DR, 2026) uses a CORAL ordinal head; the methodological decision to use CORN rather than CORAL is documented in §4.3.
 
-Channel attention aggregates spatial information using global average pooling and global max pooling:
+### 4.2 Input Channels
 
-$$F_{\text{avg}}^c = \text{AvgPool}(F), \quad F_{\text{max}}^c = \text{MaxPool}(F)$$
+The model accepts $C$-channel inputs, where $C \in \{3, 4, 5\}$ depending on the variant:
 
-Both descriptors are processed through a shared multi-layer perceptron (MLP) with reduction ratio $R = 16$ and hidden dimension $C_{\text{hidden}} = \max(\lfloor C / R \rfloor, 8)$:
+- **3-channel:** native RGB.
+- **4-channel:** RGB plus a single auxiliary channel. The auxiliary channel is one of:
+  - A lesion-segmentation soft mask (probability-valued output of a separately trained U-Net).
+  - A Sobel edge-gradient magnitude map (image-derived, no training required).
+- **5-channel:** RGB plus two auxiliary channels (a soft mask plus an edge map).
 
-$$M_c(F) = \sigma\left(W_1 \text{ReLU}(W_0 F_{\text{avg}}^c) + W_1 \text{ReLU}(W_0 F_{\text{max}}^c)\right)$$
+The auxiliary channels are pre-computed offline and stored alongside the preprocessed RGB images. They are loaded at training time and concatenated to the RGB channels at the dataset object level, before normalization.
 
-where $W_0 \in \mathbb{R}^{C_{\text{hidden}} \times C}$ and $W_1 \in \mathbb{R}^{C \times C_{\text{hidden}}}$. The intermediate feature map is $F' = M_c(F) \otimes F$.
+The auxiliary-channel question is a methodological supplement to the calibration question. The primary contribution concerns the 3-channel head; the auxiliary-channel variants are motivated by the prior literature on multi-channel lesion-aware DR grading (Lesion-Aware Ordinal Transformer, 2026) and are reported as a secondary axis.
 
-Spatial attention pools $F'$ across the channel axis to generate two 2D feature maps, which are concatenated and convolved with a $7 \times 7$ kernel:
+### 4.3 Ordinal Regression Head
 
-$$M_s(F') = \sigma\left(f^{7\times 7}\left([\text{AvgPool}(F'); \, \text{MaxPool}(F')]\right)\right)$$
+The head treats the $K$-class ordinal problem as $K-1$ binary cumulative-threshold predictions: for each threshold $t \in \{1, \dots, K-1\}$, the head emits a probability that the true grade is at least $t$. The final predicted grade is derived from these cumulative probabilities either by argmax of the implied categorical distribution or by tuning the thresholds on the validation set.
 
-The final attention-refined feature map is $F'' = M_s(F') \otimes F'$.
+This formulation has two empirical motivations that are standard in the ordinal-regression literature: (i) it encodes the ordinal structure as an inductive bias rather than treating the labels as nominal, and (ii) it produces well-calibrated probabilities that enable downstream threshold tuning without retraining.
 
-### 3.2. Projection head
-Features from Stage 3 ($F'' \in \mathbb{R}^{768 \times 12 \times 12}$) enter a regularized projection head:
+The formulation used here is the **CORN** (COnditional ORdered Normalization) decomposition (Cao, Mirjalili & Raschka, 2020), which defines the head as $K-1$ **independent binary sub-problems**, one per ordinal threshold. The independence of the sub-problems is the structural property that the per-threshold calibration analysis (§5.3) leverages.
 
-1. Adaptive Global Average Pooling ($\mathbb{R}^{768 \times 12 \times 12} \to \mathbb{R}^{768}$)
-2. Batch Normalization (1D, 768 channels)
-3. Dropout ($p = 0.4$)
-4. Linear layer ($768 \to 512$)
-5. Mish activation function $\text{Mish}(x) = x \cdot \tanh(\text{softplus}(x))$
-6. Batch Normalization (1D, 512 channels)
-7. Dropout ($p = 0.4$)
-8. Linear layer ($512 \to 4$)
+A dropout layer precedes the head. The head's hidden dimension is a hyperparameter; the default is 512.
 
-The final output is the vector of raw logits $z \in \mathbb{R}^4$ passed to the CORN loss module.
+The decision to use CORN rather than the related CORAL ordinal head is deliberate: CORN's independent-binary decomposition admits a per-threshold calibration analysis that is not available under CORAL's rank-consistent joint-decoder formulation. The two are not interchangeable for the per-threshold calibration question this work asks.
 
-## 4. Class imbalance mitigation via conditional effective sample weighting
+### 4.4 Loss Function
 
-Retinal disease datasets exhibit severe class imbalance; Grade 0 (No DR) comprises the vast majority of samples, while Grade 3 (Severe) and Grade 4 (Proliferative) represent small minority fractions. Weighting the 5 nominal classes globally is suboptimal for ordinal decomposition because the sub-population size $|S_k|$ contracts as threshold $k$ increases.
+Two loss families are considered:
 
-We resolve class imbalance independently within each binary sub-problem $k \in \{0, 1, 2, 3\}$. For sub-problem $k$, the eligible dataset is $S_k = \{i \mid y_i \ge k\}$. Samples in $S_k$ are split into negative instances ($y_i = k$, count $n_{k,0}$) and positive instances ($y_i > k$, count $n_{k,1}$).
+- **CORN loss** (COnditional ORdered Normalization): a loss designed for the cumulative-threshold head formulation that respects the ordinal label structure and is empirically reported to outperform cross-entropy on ordinal tasks.
+- **Cross-entropy** as a baseline comparator.
 
-We assign weights using the Effective Number of Samples formulation (Cui et al., CVPR 2019) with hyperparameter $\beta = 0.999$:
+When class counts are imbalanced, **class-weighted** variants are used, with weights proportional to the inverse class frequency in the training pool.
 
-$$E(n) = \frac{1 - \beta^n}{1 - \beta}$$
+### 4.5 Two-Phase Training Schedule
 
-The raw class weight for label $c \in \{0, 1\}$ in sub-task $k$ is:
+Training proceeds in two phases:
 
-$$w_{k, c}^{\text{raw}} = \frac{1}{E(n_{k, c})}$$
+**Phase 1 — Frozen backbone.** The backbone weights are frozen and only the head, the CBAM module, and the input-channel adapter (for $C > 3$) are trained. This stabilizes the head before the backbone is allowed to drift and yields a useful validation signal for early hyperparameter rejection. Phase 1 runs for a small number of epochs (default 5) with a high head learning rate (default $10^{-3}$) and a short warmup.
 
-Weights are normalized such that the mean weight over the two sub-classes equals 1:
+**Phase 2 — Full fine-tuning.** The backbone is unfrozen and the full model is trained end-to-end. Phase 2 runs for a longer horizon (default 35 epochs) with a substantially smaller learning rate (default $1.2 \times 10^{-4}$ for the head, $1.2 \times 10^{-5}$ for the backbone), a cosine schedule, and a minimum-epoch floor before early stopping is permitted. Overfitting is monitored by a patience-based early-stopping rule on validation Quadratic Weighted Kappa (QWK).
 
-$$w_{k, c} = \frac{w_{k, c}^{\text{raw}}}{\frac{1}{2} (w_{k, 0}^{\text{raw}} + w_{k, 1}^{\text{raw}})}$$
+Batch size, learning rates, weight decay, warmup epochs, and augmentation strength are backbone-dependent hyperparameters reflecting the differing memory footprints and learning-rate sensitivities of the candidate architectures.
 
-For a batch sample $i \in S_k$, $w_{i,k} = w_{k, 1}$ if $y_i > k$, and $w_{i,k} = w_{k, 0}$ if $y_i = k$. This structure prevents gradient starvation on high-severity thresholds without destabilizing early thresholds.
+### 4.6 Regularization
 
-## 5. Data augmentation and stochastic regularization
+- **Exponential Moving Average (EMA):** an EMA copy of the model parameters is maintained with decay factor 0.999 and used for evaluation. This is a standard regularizer that improves test-time stability at negligible cost.
+- **MixUp:** with a configurable probability, pairs of training samples and their labels are linearly interpolated. MixUp is applied at the input level (and propagated to the auxiliary channels) and is disabled in the last portion of training to avoid corrupting late-stage fine-tuning.
+- **Augmentation:** geometric and photometric augmentations are applied at training time. The augmentation strength is a hyperparameter (default "light") that controls the magnitudes.
+- **Sqrt sampling:** optionally, a per-class sampling probability proportional to $1/\sqrt{n_c}$ (rather than $1/n_c$) is used to balance class exposure during training. This is gentler than uniform class-balanced sampling and is the default in Phase 2.
 
-To prevent overfitting and promote domain invariance across clinical sites, we apply stochastic data augmentations, linear interpolation MixUp, and Exponential Moving Average (EMA) weight tracking.
+### 4.7 Model Selection
 
-### 5.1. Augmentation pipelines
-Augmentations operate directly on normalized float tensors. Two transformation levels are defined:
+The best checkpoint per fold is selected by **validation QWK**, not by validation accuracy. QWK is the standard metric for ordered clinical grading and is more sensitive to clinically meaningful errors than accuracy or macro-F1.
 
-* **Light Augmentation** (EyePACS phase):
-  - Random rotation in $[ -180^\circ, +180^\circ ]$
-  - Horizontal flip ($p = 0.5$)
-  - Vertical flip ($p = 0.5$)
-  - Random affine translation up to $3\%$ of canvas size
-  - Random scaling in $[0.95, 1.05]$
-  - Color jitter: brightness factor $0.1$, contrast factor $0.1$
-  - Gaussian blur: kernel size 3, $\sigma \in [0.1, 1.0]$
+## 5. Evaluation Metrics
 
-* **Heavy Augmentation** (APTOS fine-tuning phase):
-  - Random rotation in $[ -180^\circ, +180^\circ ]$
-  - Horizontal flip ($p = 0.5$)
-  - Vertical flip ($p = 0.5$)
-  - Random affine translation up to $6\%$ of canvas size
-  - Random scaling in $[0.90, 1.10]$
-  - Color jitter: brightness factor $0.2$, contrast factor $0.2$
-  - Gaussian blur: kernel size 3, $\sigma \in [0.1, 1.0]$
-  - Random erasing ($p = 0.3$, erase area ratio $0.02 \text{ to } 0.08$, aspect ratio $0.5 \text{ to } 2.0$)
+### 5.1 Primary Metric
 
-We explicitly exclude CutMix, elastic deformation, and synthetic GAN generation, as these operations warp vessel geometry or corrupt localized microaneurysms essential for accurate DR grading.
+The primary metric is **Quadratic Weighted Kappa (QWK)** on the held-out domain's test set, computed with the clinically standard integer-grading prediction. QWK is reported with confidence intervals obtained via bootstrap over the test set.
 
-### 5.2. Stochastic MixUp
-MixUp is applied with probability $p = 0.5$ during training iterations. For a pair of samples $(x_i, y_i)$ and $(x_j, y_j)$, a blend parameter $\lambda$ is sampled from a Beta distribution $\text{Beta}(\alpha, \alpha)$ with $\alpha = 0.2$:
+### 5.2 Secondary Metrics
 
-$$\tilde{x} = \lambda x_i + (1 - \lambda) x_j$$
+- **Accuracy** (argmax predicted grade).
+- **Macro precision, recall, F1** (unweighted mean across the 5 classes).
+- **Per-class F1** (one row per clinical grade).
+- **Macro AUC-ROC** (one-vs-rest, averaged across classes).
+- **Confusion matrix** at the integer-grading prediction.
 
-The loss is evaluated as a convex combination of loss targets:
+### 5.3 Per-Threshold Calibration (Core Diagnostic)
 
-$$L_{\text{batch}} = \lambda L_{\text{CORN}}(f(\tilde{x}), y_i) + (1 - \lambda) L_{\text{CORN}}(f(\tilde{x}), y_j)$$
+This is the central contribution of the work. The CORN head produces $K-1 = 4$ independent probability outputs, one per ordinal threshold $t \in \{1, 2, 3, 4\}$. Each of these outputs is a prediction of the binary event "true grade $\geq t$." The calibration of each threshold is a separate question. The diagnostic procedure is:
 
-### 5.3. Exponential Moving Average (EMA)
-During model training, an auxiliary set of shadow weights $\theta_{\text{EMA}}$ is maintained alongside active model parameters $\theta$. Following each optimization step, shadow weights are updated using decay coefficient $\gamma = 0.999$:
+- For each threshold $t$, compute the **Expected Calibration Error (ECE)** of the binary "grade $\geq t$" prediction on the held-out domain's test set, with 10 equal-width bins. This is the per-threshold ECE.
+- Fit **temperature scaling** on the validation set, separately per threshold, and re-evaluate ECE on the test set. Compare per-threshold ECE before and after temperature scaling.
+- For comparison, also fit a **single global temperature scaling** parameter across all four thresholds and compare.
+- Report the per-threshold ECE in tabular form (one row per threshold, one column per LODO fold) and characterize whether the per-threshold calibration errors diverge across folds as a function of the per-threshold class distribution in the held-out source.
 
-$$\theta_{\text{EMA}} \leftarrow \gamma \theta_{\text{EMA}} + (1 - \gamma) \theta$$
+The aggregate ECE on the categorical prediction is reported only as a summary, not as the primary metric. The per-threshold ECE is the unit of analysis.
 
-Validation metrics and final model checkpoints are evaluated exclusively using $\theta_{\text{EMA}}$.
+The distinction between *per-threshold calibration* and *ordinal threshold tuning* is deliberate and important. The latter (e.g., as in ORDER-DR, 2026) places decision boundaries to maximize QWK on the expected-grade score; it does not measure whether the predicted probabilities at each threshold are themselves trustworthy. The two procedures are complementary and answer different questions.
 
-## 6. Three-phase staged training protocol
+The per-threshold temperature scaling analysis is explicitly motivated by the Poyrazer et al. (2026) finding that global temperature scaling fails under DR cross-dataset shift. The question is whether *per-threshold* temperature scaling recovers what the global procedure loses, and whether the recovery is uniform across thresholds or worse at the Mild (grade 1) threshold specifically.
 
-Training is conducted across three sequential phases to transfer representation knowledge from large-scale screening data (EyePACS) to target clinical distributions (APTOS 2019).
+### 5.4 Statistical Significance
 
-```
-Phase 1: Frozen Backbone Pre-training (EyePACS, 5 epochs, Head LR=1e-3, bs=384)
-   |
-Phase 2: Full Backbone Fine-tuning (EyePACS, 35 epochs, Head LR=1.22e-4, Backbone LR=1.22e-5, bs=48)
-   |
-Phase 3: Target Domain Adaptation (APTOS 2019, 20 epochs, Head LR=1e-4, Backbone LR=1e-6, bs=32)
-```
+- **Per-fold QWK differences** between variants are reported with a paired bootstrap test on the held-out domain's test set (1000 resamples).
+- **Across-fold QWK differences** are reported as mean ± standard deviation across the $N$ folds and assessed with a one-sample $t$-test of the per-fold deltas against zero.
+- **Per-fold per-threshold ECE differences** are reported with a paired bootstrap test on the held-out domain's test set (1000 resamples) per threshold.
+- A pre-registered significance threshold is applied uniformly and is not adjusted post-hoc.
 
-### 6.1. Optimization parameters and weight decay exemption
-Optimization uses AdamW. Per standard regularization practice, weight decay $\lambda = 0.01$ is applied exclusively to 2D Convolution and Linear layer weights. Bias vectors, Batch Normalization parameters, and Layer Normalization parameters are explicitly assigned weight decay $\lambda = 0.0$.
+## 6. Lesion-Segmentation Auxiliary Model
 
-### 6.2. Phase execution details
+The soft-mask auxiliary channel used by the 4-channel and 5-channel variants is produced by a separately trained segmentation model:
 
-* **Phase 1: Frozen Backbone Pre-training**
-  - Dataset: EyePACS train split ($N = 29,837$)
-  - Objective: Align random projection head weights prior to full network optimization.
-  - Frozen modules: ConvNeXt-Tiny backbone and CBAM parameters.
-  - Duration: 5 epochs, batch size 384.
-  - Learning rate: $\eta_{\text{head}} = 1 \times 10^{-3}$, $\eta_{\text{backbone}} = 0.0$.
-  - Learning rate schedule: Cosine annealing with 1 epoch linear warmup.
+- **Architecture:** U-Net with an EfficientNet-B4 encoder, group-normalized for stability under small batch sizes.
+- **Training data:** combined retinal lesion segmentation datasets (lesion masks, not DR grades), covering multiple source domains.
+- **Loss family:** either binary cross-entropy plus Dice or Tversky loss (the latter is more robust to class imbalance on small lesions).
+- **Output:** a single-channel probability-valued soft mask, thresholded post-training only for visualization, not for use as the auxiliary channel.
 
-* **Phase 2: Full Backbone Fine-tuning**
-  - Dataset: EyePACS train split ($N = 29,837$)
-  - Objective: Learn domain-general DR representations.
-  - Frozen modules: None (all parameters unfrozen).
-  - Duration: 35 epochs, batch size 48.
-  - Learning rates: $\eta_{\text{head}} = 1.22 \times 10^{-4}$, $\eta_{\text{backbone}} = 1.22 \times 10^{-5}$ (square-root scaled for batch size 48).
-  - Weight decay: $\lambda = 0.01$.
-  - Learning rate schedule: Cosine annealing with 2 epochs linear warmup (minimum epochs 10, overfitting patience 10 epochs based on validation QWK).
+The segmentation model is trained once and reused across all 5-channel and 4-channel-soft-mask LODO folds. Its training-time metrics (Dice, IoU, Tversky index) are reported separately from the grading metrics.
 
-* **Phase 3: Target Domain Adaptation**
-  - Dataset: APTOS 2019 train split ($N = 2,562$)
-  - Objective: Adapt feature representations to target clinic camera statistics under heavy augmentation.
-  - Frozen modules: None.
-  - Duration: 20 epochs, batch size 32.
-  - Learning rates: $\eta_{\text{head}} = 1.0 \times 10^{-4}$, $\eta_{\text{backbone}} = 1.0 \times 10^{-6}$ ($10\times$ reduced backbone learning rate to prevent catastrophic forgetting of EyePACS representations).
-  - Learning rate schedule: `ReduceLROnPlateau` monitoring validation loss (factor 0.5, patience 3 epochs).
+### 6.1 Edge-Gradient Auxiliary Channel
 
-## 7. Inference, test-time augmentation, and model ensembling
+The Sobel edge-gradient magnitude is computed directly from the grayscale image at preprocessing time using a fixed $3\times 3$ Sobel kernel. No learned parameters are involved. It is the cheapest auxiliary channel and serves as a control for the more expensive learned segmentation mask.
 
-### 7.1. Test-Time Augmentation (TTA)
-During evaluation, each test image $x$ undergoes four deterministic spatial transformations: original, horizontal flip, vertical flip, and $180^\circ$ rotation. For each transformation $m \in \{1, 2, 3, 4\}$, the network produces conditional probabilities $p_{k, m}(x) = \sigma(z_{k, m})$.
+## 7. Experimental Design
 
-The TTA conditional probability $\bar{p}_k(x)$ is the arithmetic mean across all four augmented passes:
+### 7.1 Comparisons
 
-$$\bar{p}_k(x) = \frac{1}{4} \sum_{m=1}^{4} \sigma(z_{k, m})$$
+The following variants are compared:
 
-Unconditional exceedance probabilities are derived from $\bar{p}_k(x)$:
+| Variant | Channels | Auxiliary | Purpose |
+|--------:|:--------:|:---------:|:--------|
+| Baseline (3-channel) | 3 | none | Reference performance |
+| 4-channel soft mask | 4 | learned U-Net soft mask | Does learned segmentation help? |
+| 4-channel Sobel | 4 | Sobel edge map | Does a parameter-free edge map help? |
+| 4-channel Tversky | 4 | Tversky-loss soft mask | Does loss choice at the segmentation stage matter? |
+| 4-channel morphological | 4 | morphologically processed soft mask | Does post-processing of the soft mask help? |
+| 5-channel (soft + Sobel) | 5 | soft + Sobel | Does channel combination help? |
+| 5-channel (Tversky + Sobel) | 5 | Tversky + Sobel | Does the channel combination matter? |
 
-$$P_{\text{TTA}}(y > k \mid x) = \prod_{j=0}^{k} \bar{p}_j(x)$$
+The 3-channel row is the primary arm of the work. The 4-channel and 5-channel rows are methodological supplements motivated by the prior literature on multi-channel lesion-aware DR grading; the calibration analysis is reported on the 3-channel row.
 
-Class predictions are decoded by thresholding $P_{\text{TTA}}(y > k \mid x)$ at 0.5.
+### 7.2 LODO Folds
 
-### 7.2. Model ensembling
-To improve generalization, predictions are ensembled across two distinct network architectures trained through the identical 3-phase protocol: Model A (ConvNeXt-Tiny + CBAM + CORN) and Model B (EfficientNetV2-S + CBAM + CORN).
+Four LODO folds are run, one per held-out source. Each cell of the (variant × fold) matrix is a single training run.
 
-Ensembling is executed strictly at the marginal class probability level $P(y = c \mid x)$, rather than averaging raw logits or conditional probabilities. Averaging conditional probabilities across heterogeneous architectures invalidates individual CORN monotonic rank guarantees.
+### 7.3 Backbone Comparison
 
-For each model $m \in \{A, B\}$, conditional probabilities are converted to full 5-class distributions $P_m(y = c \mid x)$ using the mapping defined in Section 1. The ensemble probability distribution $\bar{P}(y = c \mid x)$ is:
+For the 3-channel baseline, the five backbones are compared to characterize the architectural effect on cross-domain generalization, independent of the auxiliary-channel question.
 
-$$\bar{P}(y = c \mid x) = \frac{1}{2} \left( P_A(y = c \mid x) + P_B(y = c \mid x) \right)$$
+### 7.4 Ablation on Class Balancing
 
-The final ensemble prediction is selected by argmax over $\bar{P}(y = c \mid x)$:
+The 3-channel baseline is run with and without the 3:1 class balancing to characterize the contribution of the balancing step alone.
 
-$$\hat{y}_{\text{ensemble}} = \arg\max_{c \in \{0, 1, 2, 3, 4\}} \bar{P}(y = c \mid x)$$
+### 7.5 Reproducibility
 
-### 7.3. Primary evaluation metrics
-Model performance is evaluated primarily using Quadratic Weighted Kappa (QWK), the standard metric for clinical DR competition benchmarks. QWK measures inter-rater agreement while penalizing classification errors quadratically based on grade distance:
+A single seed is used by default. Sensitivity to seed is partially reported by repeating the high-priority comparisons across a small number of seeds; the seed set is pre-registered.
 
-$$\kappa = 1 - \frac{\sum_{i=0}^{4} \sum_{j=0}^{4} w_{i,j} O_{i,j}}{\sum_{i=0}^{4} \sum_{j=0}^{4} w_{i,j} E_{i,j}}$$
+## 8. Related Work Positioning
 
-where $O_{i,j}$ is the observed confusion matrix cell count, $E_{i,j}$ is the expected cell count under independence, and the quadratic weighting matrix entry $w_{i,j}$ is:
+The work positions itself relative to four lines of recent literature:
 
-$$w_{i,j} = \frac{(i - j)^2}{(4 - 0)^2} = \frac{(i - j)^2}{16}$$
+- **GDRNet / GDRBench (Che et al., 2023) and DRGen (Atwany & Yaqub, 2022):** establish that LODO-style cross-domain evaluation is a meaningful and populated line of work on this dataset pool. The present work uses LODO as a strict evaluation protocol but does not propose a new method to close the cross-domain accuracy gap.
+- **DECO (Xia et al., 2024):** representation-disentanglement approach to closing the cross-domain gap, benchmarked on GDRBench. Same positioning as DRGen and GDRNet.
+- **El Bellaj et al. (2026):** the closest prior work. Uses an evidential ordinal regression head with a single pooled train/val/test split and reports one aggregate uncertainty number. The present work differs in (a) using strict LODO rather than pooled split, (b) using CORN's independent-binary decomposition rather than a joint Dirichlet distribution, and (c) reporting calibration decomposed per threshold rather than as a single aggregate.
+- **ORDER-DR (Sheng et al., 2026):** reports a single scalar ECE on a binarized referable-DR endpoint that nearly quadruples from in-distribution to external validation (0.049 → 0.160), providing independent confirmation that calibration degrades under cross-dataset shift in DR grading. Their "ordinal thresholds" are decision-boundary placements on the expected-grade score, not probability-calibration procedures at the per-threshold binary level. The present work cites ORDER-DR as motivation for the per-threshold calibration question rather than as a methodological competitor.
+- **Poyrazer, Yağcı & Erten (2026):** independently demonstrates that global temperature scaling fails under DR cross-dataset shift (development ECE ≤ 0.022, external ECE 0.086–0.149 after re-scaling) and independently reproduces the Mild-grade catastrophic failure under shift (F1 = 0.000 for two of three encoders). Used as convergent evidence that aggregate calibration tools are inadequate under shift and that the Mild threshold is a prior target for finer-grained diagnosis. Not a methodological competitor (no ordinal decomposition, no LODO); cited as convergent prior evidence.
 
-Secondary metrics include macro-averaged one-vs-rest AUC-ROC, overall accuracy, macro F1-score, and per-class precision/recall/F1 metrics. External validation is performed on Messidor-2 without fine-tuning (zero gradient updates) to test out-of-distribution generalization.
+## 9. Threats to Validity
 
-## 8. Anatomical prior via auxiliary segmentation channel (4-channel input)
+- **Source coverage:** only four publicly available sources are used. Generalization to sources not represented in this set is not claimed. The four-source pool is a strict subset of GDRBench's eight-source pool; extending the analysis to the full eight datasets is a follow-up.
+- **Image resolution:** the preprocessing pipeline resizes all images to a uniform resolution. Resolution-induced information loss is not separately characterized.
+- **Grading-scheme reconciliation:** the mapping from the 6-class scheme to the 5-class scheme is a published correspondence. Different mappings would yield different results.
+- **Single seed:** the default protocol uses a single seed. The reproducibility-check subset is small.
+- **Threshold tuning:** the cumulative-threshold thresholds are tuned on the validation set. Threshold quality depends on validation-set size, which is small for some folds.
+- **Calibration reporting:** the per-threshold calibration analysis is reported on the 3-channel baseline only. The auxiliary-channel variants are not separately calibrated at the per-threshold level; doing so is a follow-up.
 
-A second network input channel is pre-computed by an auxiliary U-Net trained to detect retinal structures of clinical interest (vasculature and DR lesions). The hypothesis is that explicit anatomical cues — even if imperfect — sharpen the grader's focus on diagnostically relevant regions and reduce its reliance on camera-specific photometric texture.
+## 10. Ethics and Data Use
 
-### 8.1. Auxiliary U-Net architecture
-
-The auxiliary model is a minimal U-Net with a `timm` ImageNet-pretrained EfficientNet-B0 encoder in `features_only` mode, providing five per-stage feature maps with channel widths $[32, 24, 40, 112, 320]$. The decoder progressively upsamples the bottleneck and concatenates encoder skip connections at each level:
-
-```
-Bottleneck (320 ch, 12×12) -> ConvTranspose 256 -> +skip3 (112) -> ConvBlock 256
-                            -> ConvTranspose 128 -> +skip2 (40)  -> ConvBlock 128
-                            -> ConvTranspose  64 -> +skip1 (24)  -> ConvBlock  64
-                            -> ConvTranspose  32 -> +skip0 (32)  -> ConvBlock  32
-                            -> Conv2d 1×1 (1 ch, sigmoid logit)
-```
-
-A double-conv `ConvBlock` block is used throughout: `Conv2d(3×3) → BatchNorm2d → ReLU → Conv2d(3×3) → BatchNorm2d → ReLU`. The final `1×1` convolution produces a single-channel logit map at the encoder's downsampled resolution (192×192 from a 384×384 input). Output is bilinearly upsampled to 384×384 at inference time.
-
-### 8.2. Segmentation supervision — DRIVE vessels ∪ IDRiD lesions
-
-The auxiliary network is fine-tuned on a composite target: pixel-level vessel annotations from DRIVE (20 training retinal images, expert hand-labeled vasculature) unioned with lesion annotations from IDRiD (54 training images, four lesion types: Microaneurysms, Haemorrhages, Hard Exudates, Soft Exudates). DRIVE FOV masks are applied during loss computation to exclude background pixels.
-
-The composite "retinal structures" target is constructed by:
-1. Reading DRIVE `1st_manual/*.gif` (vessel masks) and applying the DRIVE `mask/*.gif` FOV mask.
-2. Reading IDRiD `1. Microaneurysms/*.tif`, `2. Haemorrhages/*.tif`, `3. Hard Exudates/*.tif`, `4. Soft Exudates/*.tif` and taking the per-pixel union (max) across lesion types.
-
-Both annotation sources are resized to 192×192 (encoder output resolution) for the loss. Loss is a 50/50 mix of binary cross-entropy and Dice loss — Dice prevents the BCE-only solution of predicting all-zero (which is the trivial local minimum on these extremely imbalanced masks):
-
-$$L_{\text{seg}} = 0.5 \cdot \text{BCE}(\hat{m}, m) + 0.5 \cdot \left( 1 - \frac{2 \sum (\hat{m} \cdot m)}{\sum (\hat{m} + m) + \epsilon} \right)$$
-
-where $\hat{m} = \sigma(\text{logits})$, $m \in \{0, 1\}^{H \times W}$ is the ground-truth union mask, and $\epsilon = 10^{-6}$.
-
-Optimization: AdamW, learning rate $10^{-4}$, cosine annealing over 15 epochs, batch size 8, gradient clipping to max-norm 1.0.
-
-### 8.3. Mask pre-computation for the grading corpus
-
-After U-Net fine-tuning completes, inference is run over every preprocessed grading image (EyePACS, APTOS 2019, Messidor-2; total ~93,000 images). The resulting 384×384 single-channel probability maps are binarized at 0.5, scaled to uint8 [0, 255], and saved as PNG files into a flat `data/processed/segmentation_combined/` directory keyed by source image basename. The dataset loader matches masks by basename:
-
-```python
-mask_path = os.path.join(seg_dir, os.path.basename(image_path))
-```
-
-All 93k preprocessed grading images receive a corresponding mask, so the 4-channel pipeline never falls back to the zero-mask default.
-
-### 8.4. Four-channel model input
-
-The grader's first convolutional layer is modified to accept $C_{\text{in}} = 4$ channels. For timm backbones pretrained on 3-channel ImageNet, the original 3-channel first-conv weights are mean-pooled and replicated to initialize the 4th channel (the standard "RGB-mean" initialization for additional input channels):
-
-$$W_{\text{init}}[:, 4] = \frac{1}{3} \sum_{c=0}^{2} W_{\text{pretrained}}[:, c]$$
-
-The 4th channel is fed through the standard backbone feature pipeline alongside the three RGB channels. All other model components (CBAM, projection head, CORN logits) are unchanged. The augmentation pipeline uses a `_MaskSafeCompose` wrapper that applies torchvision ColorJitter to RGB only and concatenates the segmentation channel back after the geometric transforms, since torchvision color ops are constrained to 1- or 3-channel inputs.
-
-Ablation toggle: setting `model.in_chans: 3` and removing `seg_dir` reverts the model to standard 3-channel RGB input. The segmentation pipeline is implemented as a configurable knob rather than a hard requirement, allowing direct comparison between RGB-only and RGB+mask variants.
-
-## 9. Multi-domain training protocol (replaces legacy 3-phase setup)
-
-The legacy protocol used EyePACS pretraining followed by APTOS fine-tuning, but the small APTOS subset (≈2.5k images) caused severe overfitting in Phase 3. We replace this with single-stage multi-domain training that combines EyePACS, APTOS, and Messidor-2 into a single training set.
-
-### 9.1. Data splits
-
-Each source is split 80/10/10 into train/val/test using stratified random splits on the ICDR grade label:
-
-| Source | Train | Val | Test |
-|---|---|---|---|
-| EyePACS | 70,538 | 8,818 | 8,816 |
-| APTOS 2019 | 2,929 | 366 | 367 |
-| Messidor-2 | 1,815 | 227 | 227 |
-| **Combined** | **75,282** | **9,411** | **9,410** |
-
-The combined train manifest concatenates all sources with a `source` column. Stratified-per-source splits ensure each source is represented proportionally in val/test.
-
-### 9.2. Two-phase multi-domain training
-
-```
-Phase 1: Frozen-Backbone Head Warmup (Combined train, 5 epochs, bs=24-48, head LR=1e-3)
-   |
-Phase 2: Full Backbone Fine-tune (Combined train, 35 epochs, bs=24-32, head LR=1.22e-4, backbone LR=1.22e-5)
-```
-
-* **Phase 1**: Backbone weights frozen, only the projection head and CORN logits are trained for 5 epochs at LR $10^{-3}$. The objective is to bring the head's conditional probability estimates into a sensible range before unfreezing the backbone.
-* **Phase 2**: All parameters unfrozen. Head LR $1.22 \times 10^{-4}$, backbone LR $1.22 \times 10^{-5}$ (10× smaller to prevent catastrophic forgetting of pretrained ImageNet features). 35 epochs, batch size 24 (4-channel input), AdamW weight decay $\lambda = 0.01$, cosine LR schedule with 2 epochs linear warmup. Early-stopping patience is set to 7 epochs on validation QWK with a minimum of 8 epochs.
-
-A sqrt-frequency `WeightedRandomSampler` over training labels is enabled in Phase 2 to mitigate the heavy class imbalance (Grade 0 alone accounts for ~50% of combined samples). Phase 1 uses uniform sampling to keep the head-warmup signal clean.
-
-### 9.3. Per-architecture considerations
-
-Two architectures are trained through the identical protocol to provide a 2-model ensemble for evaluation:
-
-* **ConvNeXt-Tiny + CBAM** — 4-channel input, `channels_last=True` for memory-efficient convolutions, batch size 64 in Phase 1 / 24 in Phase 2 (4-channel consumes ~28% more memory than 3-channel).
-* **EfficientNetV2-S + CBAM** — 4-channel input, `channels_last=False` (BN-heavy; contiguous format works fine), batch size 48 in Phase 1 / 24 in Phase 2.
-
-Both models share the same head architecture (Section 3.2) and the same loss function (CORN with class weighting).
+All four source datasets are publicly available for research use under their respective licenses. No patient-identifying information is included in the released data. The work does not constitute a clinical-grade diagnostic system and is not intended for clinical deployment without further validation.

@@ -30,18 +30,28 @@ SOURCE_PATTERNS = {
     "eyepacs": "data/raw/eyepacs/",
     "aptos": "data/raw/aptos/",
     "messidor2": "data/raw/messidor2/",
+    "ddr": "data/ddr/DDR-dataset/DR_grading/",
 }
 
+# 4-source LODO: 4 holdouts × (train + val + test) = 12 manifests.
+# Train/val folder names use the joined names of the 3 non-held-out sources.
 FOLD_MANIFESTS = [
-    "data/train/aptos_messidor2/manifest.csv",
-    "data/val/aptos_messidor2/manifest.csv",
+    # holdout = eyepacs
+    "data/train/aptos_messidor2_ddr/manifest.csv",
+    "data/val/aptos_messidor2_ddr/manifest.csv",
     "data/test/eyepacs/manifest.csv",
-    "data/train/eyepacs_messidor2/manifest.csv",
-    "data/val/eyepacs_messidor2/manifest.csv",
+    # holdout = aptos
+    "data/train/eyepacs_messidor2_ddr/manifest.csv",
+    "data/val/eyepacs_messidor2_ddr/manifest.csv",
     "data/test/aptos/manifest.csv",
-    "data/train/eyepacs_aptos/manifest.csv",
-    "data/val/eyepacs_aptos/manifest.csv",
+    # holdout = messidor2
+    "data/train/eyepacs_aptos_ddr/manifest.csv",
+    "data/val/eyepacs_aptos_ddr/manifest.csv",
     "data/test/messidor2/manifest.csv",
+    # holdout = ddr
+    "data/train/eyepacs_aptos_messidor2/manifest.csv",
+    "data/val/eyepacs_aptos_messidor2/manifest.csv",
+    "data/test/ddr/manifest.csv",
 ]
 
 
@@ -83,7 +93,7 @@ def main() -> None:
         out_dir = PROCESSED_ROOT / src
         out_dir.mkdir(parents=True, exist_ok=True)
         work = [
-            (p, str(out_dir / Path(p).name.replace(".jpeg", ".png")))
+            (p, str(out_dir / Path(p).name.replace(".jpeg", ".png").replace(".jpg", ".png")))
             for p in lst
         ]
         print(f"  starting {src}: {len(work)} items", flush=True)

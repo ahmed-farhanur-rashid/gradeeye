@@ -59,7 +59,8 @@ class _MaskSafeCompose:
         return self.color(t)
 
 
-def build_train_transforms(strength: str = "light", img_size: int | None = None) -> T.Compose:
+def build_train_transforms(strength: str = "light", img_size: int | None = None,
+                            extra_channels: int = 1) -> T.Compose:
     """
     strength: "light" (EyePACS phase) or "heavy" (APTOS fine-tune phase).
     img_size: if set, resize the (already preprocessed) input to this size
@@ -129,11 +130,12 @@ def build_train_transforms(strength: str = "light", img_size: int | None = None)
     geometric = T.Compose(geometric_list)
     color = T.Compose(color_list)
     # Wrap with mask-safe compose: ColorJitter expects 3 channels; we have
-    # 4 when seg_dir is enabled. Geometric transforms run first on ALL
-    # channels (mask must move with image and be resized with image), then
-    # color transforms split RGB from mask and apply color jitter to RGB
-    # only.
-    return _MaskSafeCompose(geometric, color, extra_channels=1)
+    # 3 + extra_channels (1 default = single mask; >1 for multi-mask /
+    # 5-channel runs). Geometric transforms run first on ALL channels
+    # (auxiliary masks must move with image and be resized with image),
+    # then color transforms split RGB from extras and apply color jitter
+    # to RGB only.
+    return _MaskSafeCompose(geometric, color, extra_channels=extra_channels)
 
 
 def build_eval_transforms(img_size: int | None = None) -> T.Compose:

@@ -79,7 +79,17 @@ class DRDataset(Dataset):
             self.norm_mean = norm_stats["mean"]
             self.norm_std = norm_stats["std"]
         self.transform = transform
-        self.seg_dir = seg_dir
+        # `seg_dir` may be a single string or a list of strings (multiple
+        # auxiliary channels, e.g. U-Net mask + Sobel for Option 3d).
+        if isinstance(seg_dir, str):
+            self.seg_dirs = [seg_dir] if seg_dir else []
+        elif seg_dir is None:
+            self.seg_dirs = []
+        else:
+            self.seg_dirs = list(seg_dir)
+        # Masks may be uint8 (range 0-255, divides by 255) or uint16
+        # (range 0-65535, divides by 65535 — soft probabilities). Loader
+        # auto-detects bit depth by attempting uint16 read first.
 
     def _validate_labels(self):
         labels = self.df["label"].unique()
@@ -111,20 +121,38 @@ class DRDataset(Dataset):
         # back through PIL, since values are already normalized.
         img_tensor = torch.from_numpy(img.transpose(2, 0, 1)).float()  # (3, H, W)
 
-        # Optional segmentation mask as 4th channel (Option A).
-        if self.seg_dir is not None:
-            seg_path = os.path.join(self.seg_dir, os.path.basename(image_path))
-            mask = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
-            if mask is None:
-                # Missing mask -> zeros. Better to fail loudly, but zeros let
-                # training continue if a single file is corrupted.
-                mask = np.zeros(img_tensor.shape[1:], dtype=np.uint8)
-            else:
-                if mask.shape != img_tensor.shape[1:]:
-                    mask = cv2.resize(mask, (img_tensor.shape[2], img_tensor.shape[1]),
-                                      interpolation=cv2.INTER_NEAREST)
-            mask_tensor = torch.from_numpy(mask.astype(np.float32) / 255.0).unsqueeze(0)  # (1, H, W)
-            img_tensor = torch.cat([img_tensor, mask_tensor], dim=0)  # (4, H, W)
+        # Optional segmentation mask(s) as extra channels (Option A).
+        if self.seg_dirs:
+            base = os.path.basename(image_path)
+            stem = os.path.splitext(base)[0]
+            for seg_dir_i in self.seg_dirs:
+                candidates = [
+                    os.path.join(seg_dir_i, base),
+                    os.path.join(seg_dir_i, stem + ".png"),
+                ]
+                mask = None
+                for seg_path in candidates:
+                    # Try 16-bit first (soft masks saved as uint16 PNGs),
+                    # then fall back to 8-bit (binary masks).
+                    mask = cv2.imread(seg_path, cv2.IMREAD_UNCHANGED)
+                    if mask is not None:
+                        break
+                if mask is None:
+                    mask = np.zeros(img_tensor.shape[1:], dtype=np.float32)
+                else:
+                    if mask.dtype == np.uint16:
+                        # Soft probability map: 0-65535 = 0.0-1.0
+                        mask_f = mask.astype(np.float32) / 65535.0
+                    else:
+                        # Binary or uint8 mask: 0-255 = 0/1
+                        mask_f = mask.astype(np.float32) / 255.0
+                    if mask_f.shape != img_tensor.shape[1:]:
+                        mask_f = cv2.resize(mask_f,
+                                            (img_tensor.shape[2], img_tensor.shape[1]),
+                                            interpolation=cv2.INTER_NEAREST)
+                    mask = mask_f
+                mask_tensor = torch.from_numpy(mask.astype(np.float32)).unsqueeze(0)
+                img_tensor = torch.cat([img_tensor, mask_tensor], dim=0)
 
         if self.transform is not None:
             # transform pipelines built in augmentation/transforms.py expect
