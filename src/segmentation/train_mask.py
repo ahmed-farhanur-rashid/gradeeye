@@ -311,10 +311,15 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--use-idrid-train", action="store_true",
-                        help="Add IDRiD's 54 training images to the training "
-                             "pool. Default: DDR only. IDRiD is always used "
-                             "as the cross-domain evaluation set.")
+    parser.add_argument("--no-idrid-train", action="store_true",
+                        help="EXCLUDE IDRiD's 54 training images from the "
+                             "training pool. Default: IDRiD is INCLUDED. "
+                             "IDRiD shares DDR's lesion-segmentation label "
+                             "space (4 lesion types: MA/HE/EX/SE) and adds "
+                             "14% more diverse-annotation training data "
+                             "(54/383). IDRiD test (27 images) is always "
+                             "held out for cross-domain evaluation "
+                             "regardless of this flag.")
     parser.add_argument("--output-dir", required=True,
                         help="Where to write best.pt. Also: ../logs/<name>/ "
                              "is auto-created for the JSON log.")
@@ -338,10 +343,12 @@ def main() -> int:
     print(f"  DDR: {len(ddr_train)} train / {len(ddr_val)} val")
 
     idrid_train = None
-    if args.use_idrid_train:
+    if not args.no_idrid_train:
         from src.segmentation.ablation_3arm import collect_idrid_samples
         idrid_train = collect_idrid_samples()  # 54 samples
         print(f"  IDRiD train (auxiliary): {len(idrid_train)} samples")
+    else:
+        print(f"  IDRiD train (auxiliary): excluded via --no-idrid-train")
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
