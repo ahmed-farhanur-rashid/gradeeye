@@ -1,0 +1,311 @@
+"""
+Train a U-Net lesion segmenter on IDRiD for the 4ch/5ch auxiliary-channel
+pools.
+
+Why this script exists:
+- The pre-existing 5 segmentation pools (segmentation_pooled_soft, _tversky,
+  _morph, _sobel, plus the original _pooled) were wiped before this runbook
+  was written (Rule 4 of docs/todo.md).
+- The pre-existing U-Net checkpoints were also wiped.
+- The pre-existing `src/segmentation/train.py` tried to load DDR lesion
+  segmentation data from `data/ddr/DDR-dataset/lesion_segmentation/`, but
+  that path only contains README files (the per-image TIFs are not in this
+  checkout). It is unusable as-is.
+- The IDRiD lesion-segmentation data IS on disk at
+  `data/raw/A. Segmentation/`, and the existing `src/segmentation/ablation_3arm.py`
+  provides the IDRiD loader (`collect_idrid_samples`) and the BCE+Dice
+  baseline loss.
+
+What this script does:
+- Trains a single U-Net on IDRiD (54 training images, 27 test images),
+  fixed 4-fold split (no CV), with a configurable loss family
+  (BCE+Dice or Tversky).
+- Saves the best checkpoint to `saved/checkpoints/seg_unet_<loss>/best.pt`.
+- Writes a small JSON log to `saved/logs/seg_unet_<loss>/train_log.json`.
+- Reports Dice / IoU / Tversky on the IDRiD test set.
+
+Usage:
+    PYTHONPATH=. python -m src.segmentation.train_idrid \\
+        --loss bce_dice \\
+        --epochs 30 \\
+        --output-dir saved/checkpoints/seg_unet_bcedice
+
+Then the new agent runs generate_soft_masks.py with --checkpoint pointing at
+the saved file to populate data/processed/segmentation_pooled_<loss>/ for
+all four sources (eyepacs, aptos, messidor2, ddr).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import time
+from pathlib import Path
+
+import cv2
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from src.models.segmentation import build_unet_vessel
+from src.segmentation.ablation_3arm import (
+    IDRID_IMG_DIR, IDRID_LAB_DIR,
+    IDRiDSample, collect_idrid_samples, _load_pair,
+    _dice_loss, _normalize, _safe_div, dice_iou,
+    baseline_loss, predict_mask,
+)
+from src.segmentation.train import TverskyLoss
+
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def tversky_loss_fn(logits: torch.Tensor, target: torch.Tensor,
+                    bce: nn.Module) -> torch.Tensor:
+    """Tversky loss wrapped in the (logits, target, bce) signature ablation_3arm
+    uses for its loss functions. The bce arg is unused — Tversky is its own
+    loss — but keeping the signature lets the train loop stay arm-agnostic."""
+    tl = TverskyLoss(alpha=0.3, beta=0.7, gamma=1.0).to(logits.device)
+    return tl(logits, target)
+
+
+def split_idrid(samples: list[IDRiDSample], n_splits: int = 4,
+                seed: int = 42) -> tuple[list[IDRiDSample], list[IDRiDSample]]:
+    """Fixed K-fold split (stratified by presence of any lesion). Returns
+    (train, val) for the first fold."""
+    rng = np.random.default_rng(seed)
+    # Mark each sample as having any lesion (sum of GT > 0) vs blank.
+    has_lesion = []
+    for s in samples:
+        m = cv2.imread(s.union_mask_path, cv2.IMREAD_GRAYSCALE)
+        has_lesion.append((m > 0).any() if m is not None else False)
+    pos_idx = [i for i, h in enumerate(has_lesion) if h]
+    neg_idx = [i for i, h in enumerate(has_lesion) if not h]
+    rng.shuffle(pos_idx)
+    rng.shuffle(neg_idx)
+    val_size = max(1, len(samples) // n_splits)
+    val_idx = pos_idx[: val_size // 2] + neg_idx[: val_size - val_size // 2]
+    val_idx_set = set(val_idx)
+    train = [s for i, s in enumerate(samples) if i not in val_idx_set]
+    val = [s for i, s in enumerate(samples) if i in val_idx_set]
+    return train, val
+
+
+def evaluate_segmentation(model: nn.Module, samples: list[IDRiDSample]) -> dict:
+    """Compute Dice / IoU / Tversky on a list of IDRiD samples."""
+    dices, ious, tverskies = [], [], []
+    for s in samples:
+        pred = predict_mask(model, s.image_path)
+        gt = cv2.imread(s.union_mask_path, cv2.IMREAD_GRAYSCALE)
+        if gt is None:
+            continue
+        gt = cv2.resize(gt, (pred.shape[1], pred.shape[0]),
+                        interpolation=cv2.INTER_NEAREST)
+        gt_bin = (gt > 127).astype(np.uint8)
+        d, i = dice_iou(pred, gt_bin)
+        dices.append(d)
+        ious.append(i)
+        # Tversky index = TP / (TP + alpha*FP + beta*FN), alpha=beta=0.5
+        p = pred.astype(bool)
+        t = gt_bin.astype(bool)
+        tp = float(np.logical_and(p, t).sum())
+        fp = float(np.logical_and(p, ~t).sum())
+        fn = float(np.logical_and(~p, t).sum())
+        tverskies.append(_safe_div(tp, tp + 0.5 * fp + 0.5 * fn))
+    return {
+        "n": len(dices),
+        "dice": float(np.mean(dices)) if dices else 0.0,
+        "iou": float(np.mean(ious)) if ious else 0.0,
+        "tversky": float(np.mean(tverskies)) if tverskies else 0.0,
+    }
+
+
+def train_one(loss_kind: str, train_samples: list[IDRiDSample],
+              val_samples: list[IDRiDSample],
+              epochs: int = 30, batch_size: int = 8, lr: float = 1e-4,
+              seed: int = 42) -> tuple[nn.Module, dict]:
+    """Train a single U-Net for the specified loss kind. Returns (best_model, log)."""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    model = build_unet_vessel(pretrained=True, encoder="efficientnet_b4").to(DEVICE)
+    bce = nn.BCEWithLogitsLoss()
+
+    if loss_kind == "bce_dice":
+        loss_fn = lambda l, t, b: baseline_loss(l, t, b)
+    elif loss_kind == "tversky":
+        loss_fn = tversky_loss_fn
+    else:
+        raise ValueError(f"Unknown loss: {loss_kind}")
+
+    opt = torch.optim.AdamW(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
+
+    # Build (image, mask) pairs.
+    train_pairs = [(s.image_path, s.union_mask_path, None) for s in train_samples]
+    val_pairs = [(s.image_path, s.union_mask_path, None) for s in val_samples]
+
+    log = {"loss": loss_kind, "epochs": [], "best_val_dice": 0.0,
+           "best_epoch": -1}
+    best_state = None
+    best_dice = -1.0
+
+    for epoch in range(epochs):
+        model.train()
+        running, n_steps = 0.0, 0
+        rng = np.random.default_rng(seed + epoch)
+        perm = rng.permutation(len(train_pairs))
+        shuffled = [train_pairs[i] for i in perm]
+        for i in range(0, len(shuffled), batch_size):
+            batch = shuffled[i:i + batch_size]
+            xs, ys = [], []
+            for ip, mp, fp in batch:
+                pair = _load_pair(ip, mp, fp)
+                if pair is None:
+                    continue
+                xs.append(pair[0])
+                ys.append(pair[1])
+            if not xs:
+                continue
+            x = torch.stack(xs).to(DEVICE)
+            y = torch.stack(ys).to(DEVICE)
+            logits = model(x)
+            loss = loss_fn(logits, y, bce)
+            opt.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step()
+            running += loss.item()
+            n_steps += 1
+        scheduler.step()
+
+        # Evaluate on the val set.
+        val_metrics = evaluate_segmentation(model, val_samples)
+        epoch_log = {
+            "epoch": epoch + 1,
+            "train_loss": running / max(1, n_steps),
+            "val_dice": val_metrics["dice"],
+            "val_iou": val_metrics["iou"],
+            "val_tversky": val_metrics["tversky"],
+        }
+        log["epochs"].append(epoch_log)
+        print(f"  [{loss_kind}] epoch {epoch + 1}/{epochs}: "
+              f"train_loss={epoch_log['train_loss']:.4f} "
+              f"val_dice={val_metrics['dice']:.4f} "
+              f"val_iou={val_metrics['iou']:.4f} "
+              f"val_tversky={val_metrics['tversky']:.4f}")
+        if val_metrics["dice"] > best_dice:
+            best_dice = val_metrics["dice"]
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            log["best_val_dice"] = best_dice
+            log["best_epoch"] = epoch + 1
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    return model, log
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--loss", choices=["bce_dice", "tversky"], required=True)
+    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--output-dir", required=True,
+                        help="Where to write best.pt. Also: ../logs/<name>/ "
+                             "is auto-created for the JSON log.")
+    parser.add_argument("--name", default=None,
+                        help="Optional run name (default: derived from output-dir).")
+    args = parser.parse_args()
+
+    if not (IDRID_IMG_DIR.is_dir() and IDRID_LAB_DIR.is_dir()):
+        print(f"ERROR: IDRiD not found at {IDRID_IMG_DIR} / {IDRID_LAB_DIR}.")
+        return 1
+
+    print(f"Collecting IDRiD samples...")
+    samples = collect_idrid_samples()
+    if len(samples) == 0:
+        print("ERROR: no IDRiD samples. Stop.")
+        return 1
+    print(f"  {len(samples)} samples collected")
+
+    train, val = split_idrid(samples, n_splits=4, seed=args.seed)
+    print(f"  split: {len(train)} train / {len(val)} val")
+
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    name = args.name or out_dir.name
+    log_dir = Path("saved/logs") / name
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    t0 = time.time()
+    model, log = train_one(args.loss, train, val,
+                           epochs=args.epochs, batch_size=args.batch_size,
+                           lr=args.lr, seed=args.seed)
+    elapsed = time.time() - t0
+
+    # Save checkpoint
+    ckpt = {
+        "model_state": model.state_dict(),
+        "loss": args.loss,
+        "epochs": args.epochs,
+        "best_val_dice": log["best_val_dice"],
+        "best_epoch": log["best_epoch"],
+        "encoder": "efficientnet_b4",
+        "img_size": 384,
+    }
+    ckpt_path = out_dir / "best.pt"
+    torch.save(ckpt, ckpt_path)
+    print(f"Saved checkpoint to {ckpt_path}")
+
+    # Final test-set metrics (use the held-out IDRiD test set, not the in-fold val).
+    test_samples = []
+    test_img_dir = Path("data/raw/A. Segmentation/1. Original Images/b. Testing Set")
+    test_lab_dir = Path("data/raw/A. Segmentation/2. All Segmentation Groundtruths/b. Testing Set")
+    if test_img_dir.is_dir() and test_lab_dir.is_dir():
+        # Reuse the ablation_3arm machinery: walk the test set, build union masks.
+        from src.segmentation.ablation_3arm import _idrid_lesion_folder, LESION_TYPES
+        for img_path in sorted(test_img_dir.glob("*.jpg")):
+            stem = img_path.stem
+            per_lesion: dict[str, str] = {}
+            union = None
+            for lesion in LESION_TYPES:
+                lab_path = test_lab_dir / _idrid_lesion_folder(lesion) / f"{stem}_{lesion}.tif"
+                if not lab_path.exists():
+                    continue
+                per_lesion[lesion] = str(lab_path)
+                m = cv2.imread(str(lab_path), cv2.IMREAD_GRAYSCALE)
+                if m is None:
+                    continue
+                union = m if union is None else np.maximum(union, m)
+            if union is None:
+                continue
+            all_dir = test_lab_dir / "0_all"
+            all_dir.mkdir(exist_ok=True)
+            all_path = all_dir / f"{stem}_ALL.png"
+            if not all_path.exists():
+                cv2.imwrite(str(all_path), union)
+            test_samples.append(IDRiDSample(
+                image_path=str(img_path),
+                stem=stem,
+                union_mask_path=str(all_path),
+                per_lesion_mask_paths=per_lesion,
+            ))
+    test_metrics = evaluate_segmentation(model, test_samples) if test_samples else {}
+    log["test_metrics"] = test_metrics
+    log["elapsed_sec"] = elapsed
+    log["n_train_idrid"] = len(train)
+    log["n_val_idrid"] = len(val)
+    log["n_test_idrid"] = len(test_samples)
+
+    log_path = log_dir / "train_log.json"
+    with open(log_path, "w") as f:
+        json.dump(log, f, indent=2)
+    print(f"Training log saved to {log_path}")
+    print(f"Final test metrics: {test_metrics}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

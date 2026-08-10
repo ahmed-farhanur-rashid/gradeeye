@@ -181,12 +181,13 @@ def _load_pair(image_path: str, mask_path: str, fov_path: str | None,
     if mask is None:
         return None
 
-    # U-Net downsamples by 32 → match loss to its output resolution.
-    mask = cv2.resize(mask, (size // 2, size // 2), interpolation=cv2.INTER_NEAREST)
+    # U-Net decoder upsamples back to the input resolution, so the model's
+    # output logits are at (size, size). The mask must match.
+    mask = cv2.resize(mask, (size, size), interpolation=cv2.INTER_NEAREST)
     if fov_path is not None and os.path.exists(fov_path):
         fov = cv2.imread(fov_path, cv2.IMREAD_GRAYSCALE)
         if fov is not None:
-            fov = cv2.resize(fov, (size // 2, size // 2), interpolation=cv2.INTER_NEAREST)
+            fov = cv2.resize(fov, (size, size), interpolation=cv2.INTER_NEAREST)
             mask = (mask * (fov > 127)).astype(np.uint8)
 
     return _normalize(img), torch.from_numpy((mask > 127).astype(np.float32)).unsqueeze(0)
@@ -306,17 +307,23 @@ def train_one_arm(
 
 @torch.no_grad()
 def predict_mask(model: nn.Module, image_path: str, size: int = 384) -> np.ndarray:
+    """Predict a binary mask from a single image. The U-Net decoder upsamples
+    back to the input resolution, so the logits come out at (size, size).
+    Returned mask matches the model's output resolution.
+    """
     img = cv2.imread(image_path)
     if img is None:
-        return np.zeros((size // 2, size // 2), dtype=np.uint8)
+        return np.zeros((size, size), dtype=np.uint8)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = cv2.resize(img, (size, size), interpolation=cv2.INTER_AREA)
     x = _normalize(img).unsqueeze(0).to(DEVICE)
     with torch.autocast(device_type="cuda" if "cuda" in DEVICE else "cpu",
                         dtype=torch.bfloat16):
         logits = model(x)
-    if logits.shape[-1] != size // 2:
-        logits = F.interpolate(logits, size=(size // 2, size // 2),
+    # Some legacy checkpoints may have been trained at a different output
+    # resolution; normalize to (size, size) if needed.
+    if logits.shape[-1] != size:
+        logits = F.interpolate(logits, size=(size, size),
                                 mode="bilinear", align_corners=False)
     prob = torch.sigmoid(logits.float()).squeeze().cpu().numpy()
     return (prob > 0.5).astype(np.uint8)

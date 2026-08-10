@@ -44,7 +44,7 @@ class UNetVessel(nn.Module):
              connections.
     """
 
-    def __init__(self, encoder: str = "efficientnet_b0", pretrained: bool = True):
+    def __init__(self, encoder: str = "efficientnet_b4", pretrained: bool = True):
         super().__init__()
         self.encoder = timm.create_model(
             encoder, pretrained=pretrained, features_only=True,
@@ -93,6 +93,6 @@ class UNetVessel(nn.Module):
         return self.final(d)  # (B, 1, H, W) logits; apply sigmoid externally
 
 
-def build_unet_vessel(pretrained: bool = True, encoder: str = "efficientnet_b0") -> UNetVessel:
-    """Convenience constructor — defaults match the DRIVE-fine-tuned weights."""
+def build_unet_vessel(pretrained: bool = True, encoder: str = "efficientnet_b4") -> UNetVessel:
+    """Convenience constructor — defaults match the EfficientNet-B4 IDRiD-fine-tuned weights."""
     return UNetVessel(encoder=encoder, pretrained=pretrained)

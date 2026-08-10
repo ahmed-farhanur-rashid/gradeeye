@@ -106,6 +106,8 @@ The model accepts $C$-channel inputs, where $C \in \{3, 4, 5\}$ depending on the
 
 The auxiliary channels are pre-computed offline and stored alongside the preprocessed RGB images. They are loaded at training time and concatenated to the RGB channels at the dataset object level, before normalization.
 
+**Coverage requirement:** every auxiliary pool must provide an auxiliary file for every RGB image in all four source domains — including the DDR test images. The DDR holdout fold requires its 2,990 test images to have soft-mask, Tversky-mask, morph-mask, and Sobel-edge auxiliary files. Coverage is verified explicitly before any 4-channel or 5-channel LODO fold is started; a missing file would render that fold unevaluable on the auxiliary-channel variants.
+
 The auxiliary-channel question is a methodological supplement to the calibration question. The primary contribution concerns the 3-channel head; the auxiliary-channel variants are motivated by the prior literature on multi-channel lesion-aware DR grading (Lesion-Aware Ordinal Transformer, 2026) and are reported as a secondary axis.
 
 ### 4.3 Ordinal Regression Head
@@ -190,12 +192,15 @@ The per-threshold temperature scaling analysis is explicitly motivated by the Po
 
 The soft-mask auxiliary channel used by the 4-channel and 5-channel variants is produced by a separately trained segmentation model:
 
-- **Architecture:** U-Net with an EfficientNet-B4 encoder, group-normalized for stability under small batch sizes.
-- **Training data:** combined retinal lesion segmentation datasets (lesion masks, not DR grades), covering multiple source domains.
-- **Loss family:** either binary cross-entropy plus Dice or Tversky loss (the latter is more robust to class imbalance on small lesions).
+- **Architecture:** U-Net with an **EfficientNet-B4 encoder** (the same `build_unet_vessel` backbone used elsewhere in the segmentation module). The encoder is initialized from ImageNet-pretrained weights and adapted to single-channel output. No group normalization is used; standard batch norm is sufficient at the batch sizes used here. B4 is chosen over B0 for the larger receptive field and richer feature capacity; the cost is a ~4× parameter count increase and a ~2× inference-time cost per image, both of which are acceptable for an offline, once-per-source mask-generation pass.
+- **Training data (primary):** **DDR lesion segmentation** subset at `data/raw/DDR-dataset/lesion_segmentation/`. The dataset provides 383 training images, 149 validation images, and 225 test images with pixel-level ground truth for the same four lesion types as IDRiD: microaneurysms (MA), hemorrhages (HE), hard exudates (EX), and soft exudates (SE). The four per-lesion masks are unioned into a single binary "any-lesion" mask for training and evaluation. DDR is the primary training source because it provides ~7× more images than IDRiD with comparable annotation density, and because it is the only source on disk that produces masks for the DDR-holdout fold's test images (so the segmentation model is trained on the same domain whose downstream grading pool it must annotate).
+- **Training data (auxiliary, optional):** **IDRiD** lesion-segmentation subset at `data/raw/A. Segmentation/` (54 training + 27 test images). IDRiD is held out of the training pool by default and used only as the cross-domain evaluation set (the methodology references its gold-standard per-lesion GT). Adding IDRiD's 54 training images via `--use-idrid-train` is permitted but not the default; it provides only marginal additional diversity given the size.
+- **Loss family:** either binary cross-entropy plus Dice or Tversky loss (the latter is more robust to class imbalance on small lesions). Both are trained and reported separately.
 - **Output:** a single-channel probability-valued soft mask, thresholded post-training only for visualization, not for use as the auxiliary channel.
 
-The segmentation model is trained once and reused across all 5-channel and 4-channel-soft-mask LODO folds. Its training-time metrics (Dice, IoU, Tversky index) are reported separately from the grading metrics.
+**The segmentation model is trained once per loss family and reused across all four DR-grading source domains** (eyepacs, aptos, messidor2, ddr). At inference time, the trained U-Net is applied to every image in the four DR-grading source corpora to produce soft masks that are stored as auxiliary files matching the RGB image basenames. This covers all four LODO folds, including the DDR-holdout fold whose 2,990 test images would otherwise have no auxiliary channel. Coverage is verified per pool before any 4-channel or 5-channel grading training run begins.
+
+The segmentation model's training-time metrics (Dice, IoU, Tversky index on the IDRiD test split — cross-domain — and the DDR test split — in-domain) are reported separately from the grading metrics in `docs/results.md` Section 8.
 
 ### 6.1 Edge-Gradient Auxiliary Channel
 

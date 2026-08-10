@@ -5,13 +5,13 @@ Unified GradeEye training entry point — runs the LODO pipeline for any
 Usage (preferred three-axis split form):
     python -m src.train \\
         --model-config   configs/models/convnext_tiny.yaml \\
-        --variant-config configs/variants/convnext_tiny_4ch_sobel.yaml \\
-        --lodo-config    configs/lodo/eyepacs.yaml
+        --variant-config configs/variants/four_ch_sobel.yaml \\
+        --lodo-config    configs/lodo_balanced/eyepacs.yaml
 
 Usage (two-axis split form, 3-channel baseline):
     python -m src.train \\
         --model-config configs/models/convnext_tiny.yaml \\
-        --lodo-config   configs/lodo/eyepacs.yaml
+        --lodo-config   configs/lodo_balanced/eyepacs.yaml
 
 Usage (legacy monolithic form, back-compat shim):
     python -m src.train --config configs/lodo_eyepacs_convnext_tiny.yaml
