@@ -27,41 +27,55 @@
 \newlabel{fig:convnext_metrics}{{2}{3}{ConvNeXt-Tiny (3-channel baseline): per-fold decomposition across QWK, accuracy, macro-F1, and macro AUC-ROC. AUC is the most fold-stable; macro-F1 and QWK degrade together.\relax }{figure.caption.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Per-Fold Distribution}{3}{subsection.2.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {3}Segmentation Auxiliary Ablation}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Per-Fold QWK with Bootstrap 95\% Confidence Intervals}{3}{subsection.3.1}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Per-fold QWK distribution pooled across all variants. APTOS is the easiest fold; EyePACS has the largest spread.\relax }}{4}{figure.caption.3}\protected@file@percent }
 \newlabel{fig:qwk_dist}{{3}{4}{Per-fold QWK distribution pooled across all variants. APTOS is the easiest fold; EyePACS has the largest spread.\relax }{figure.caption.3}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Segmentation auxiliary ablation: 3-channel vs.\ four-channel variants (ConvNeXt-Tiny).\relax }}{5}{figure.caption.4}\protected@file@percent }
-\newlabel{fig:seg_ablation}{{4}{5}{Segmentation auxiliary ablation: 3-channel vs.\ four-channel variants (ConvNeXt-Tiny).\relax }{figure.caption.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Per-Threshold Calibration Diagnostic}{5}{section.4}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Per-threshold ECE on the held-out test set, no calibration. Bold = best ECE$_t$ in each row.\relax }}{5}{table.caption.6}\protected@file@percent }
-\newlabel{tab:raw-ece}{{1}{5}{Per-threshold ECE on the held-out test set, no calibration. Bold = best ECE$_t$ in each row.\relax }{table.caption.6}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Per-fold $\Delta $QWK (4-channel minus 3-channel). The dashed lines mark the $\pm 2$ percentage-point pre-registered improvement threshold.\relax }}{6}{figure.caption.5}\protected@file@percent }
-\newlabel{fig:seg_delta}{{5}{6}{Per-fold $\Delta $QWK (4-channel minus 3-channel). The dashed lines mark the $\pm 2$ percentage-point pre-registered improvement threshold.\relax }{figure.caption.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Confusion Analysis: Where the Baselines Fail}{6}{section.5}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Per-threshold ECE on the held-out test set, after per-threshold temperature scaling (top half) and after single-global temperature scaling (bottom half).\relax }}{7}{table.caption.7}\protected@file@percent }
-\newlabel{tab:cal-ece}{{2}{7}{Per-threshold ECE on the held-out test set, after per-threshold temperature scaling (top half) and after single-global temperature scaling (bottom half).\relax }{table.caption.7}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces EyePACS reliability diagrams (no calibration, held-out test). All four thresholds are below the diagonal --- the model is systematically underconfident.\relax }}{7}{figure.caption.8}\protected@file@percent }
-\newlabel{fig:reliability-eyepacs}{{6}{7}{EyePACS reliability diagrams (no calibration, held-out test). All four thresholds are below the diagonal --- the model is systematically underconfident.\relax }{figure.caption.8}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces APTOS reliability diagrams. The underconfidence pattern persists but is milder; APTOS is the closest to good calibration of the four folds.\relax }}{8}{figure.caption.9}\protected@file@percent }
-\newlabel{fig:reliability-aptos}{{7}{8}{APTOS reliability diagrams. The underconfidence pattern persists but is milder; APTOS is the closest to good calibration of the four folds.\relax }{figure.caption.9}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Messidor-2 reliability diagrams. Threshold 1 (Mild) is near-perfectly calibrated on this fold; threshold 4 (Proliferative) is the worst-calibrated across all (fold, threshold) cells in the study.\relax }}{8}{figure.caption.10}\protected@file@percent }
-\newlabel{fig:reliability-messidor}{{8}{8}{Messidor-2 reliability diagrams. Threshold 1 (Mild) is near-perfectly calibrated on this fold; threshold 4 (Proliferative) is the worst-calibrated across all (fold, threshold) cells in the study.\relax }{figure.caption.10}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{8}{section.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}What the Baseline Establishes}{8}{subsection.6.1}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces DDR reliability diagrams. Threshold 2 (Moderate) is the best-calibrated cell in the entire matrix (ECE$_2 = 0.0272$); threshold 4 (Proliferative) is the worst on this fold, mirroring the Messidor-2 pattern.\relax }}{9}{figure.caption.11}\protected@file@percent }
-\newlabel{fig:reliability-ddr}{{9}{9}{DDR reliability diagrams. Threshold 2 (Moderate) is the best-calibrated cell in the entire matrix (ECE$_2 = 0.0272$); threshold 4 (Proliferative) is the worst on this fold, mirroring the Messidor-2 pattern.\relax }{figure.caption.11}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces ConvNeXt-Tiny (3-channel baseline) on EyePACS holdout; row-normalized confusion matrix (\%).\relax }}{9}{table.caption.12}\protected@file@percent }
-\newlabel{tab:cm-eyepacs}{{3}{9}{ConvNeXt-Tiny (3-channel baseline) on EyePACS holdout; row-normalized confusion matrix (\%).\relax }{table.caption.12}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}What the Seg Ablation Suggests}{9}{subsection.6.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}What the Class-Balancing Ablation Suggests}{9}{subsection.6.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces ConvNeXt-Tiny (3-channel baseline) on APTOS holdout; row-normalized confusion matrix (\%).\relax }}{10}{table.caption.13}\protected@file@percent }
-\newlabel{tab:cm-aptos}{{4}{10}{ConvNeXt-Tiny (3-channel baseline) on APTOS holdout; row-normalized confusion matrix (\%).\relax }{table.caption.13}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces ConvNeXt-Tiny (3-channel baseline) on Messidor-2 holdout; row-normalized confusion matrix (\%).\relax }}{10}{table.caption.14}\protected@file@percent }
-\newlabel{tab:cm-messidor}{{5}{10}{ConvNeXt-Tiny (3-channel baseline) on Messidor-2 holdout; row-normalized confusion matrix (\%).\relax }{table.caption.14}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Implications for the Calibration Diagnostic}{10}{subsection.6.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {7}Threats to Validity}{10}{section.7}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces ConvNeXt-Tiny (3-channel baseline) on DDR holdout; row-normalized confusion matrix (\%).\relax }}{11}{table.caption.15}\protected@file@percent }
-\newlabel{tab:cm-ddr}{{6}{11}{ConvNeXt-Tiny (3-channel baseline) on DDR holdout; row-normalized confusion matrix (\%).\relax }{table.caption.15}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {8}Conclusion}{11}{section.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {9}Future Work}{12}{section.9}\protected@file@percent }
-\newlabel{sec:future-work}{{9}{12}{Future Work}{section.9}{}}
-\gdef \@abspage@last{13}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Per-fold QWK with paired-bootstrap 95\% confidence intervals (1000 resamples) on the held-out test set. ConvNeXt-Tiny backbone.\relax }}{4}{table.caption.4}\protected@file@percent }
+\newlabel{tab:bootstrap-cis}{{1}{4}{Per-fold QWK with paired-bootstrap 95\% confidence intervals (1000 resamples) on the held-out test set. ConvNeXt-Tiny backbone.\relax }{table.caption.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Segmentation auxiliary ablation: 3-channel vs.\ four-channel variants (ConvNeXt-Tiny).\relax }}{5}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:seg_ablation}{{4}{5}{Segmentation auxiliary ablation: 3-channel vs.\ four-channel variants (ConvNeXt-Tiny).\relax }{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Cross-Variant QWK Matrix and $\Delta $QWK Against the 3-Channel Baseline}{5}{subsection.3.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Per-fold $\Delta $QWK (4-channel minus 3-channel). The dashed lines mark the $\pm 2$ percentage-point pre-registered improvement threshold.\relax }}{6}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:seg_delta}{{5}{6}{Per-fold $\Delta $QWK (4-channel minus 3-channel). The dashed lines mark the $\pm 2$ percentage-point pre-registered improvement threshold.\relax }{figure.caption.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Per-fold held-out test QWK (ConvNeXt-Tiny). Mean $\pm $ SD is across the four folds.\relax }}{6}{table.caption.7}\protected@file@percent }
+\newlabel{tab:qwk-per-variant}{{2}{6}{Per-fold held-out test QWK (ConvNeXt-Tiny). Mean $\pm $ SD is across the four folds.\relax }{table.caption.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Per-Threshold Calibration Diagnostic}{6}{section.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Per-fold $\Delta $QWK against the 3-channel balanced baseline. The pre-registered improvement threshold was $\pm 2$ absolute percentage points.\relax }}{7}{table.caption.8}\protected@file@percent }
+\newlabel{tab:delta-qwk}{{3}{7}{Per-fold $\Delta $QWK against the 3-channel balanced baseline. The pre-registered improvement threshold was $\pm 2$ absolute percentage points.\relax }{table.caption.8}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Per-threshold ECE on the held-out test set, no calibration. Bold = best ECE$_t$ in each row.\relax }}{7}{table.caption.9}\protected@file@percent }
+\newlabel{tab:raw-ece}{{4}{7}{Per-threshold ECE on the held-out test set, no calibration. Bold = best ECE$_t$ in each row.\relax }{table.caption.9}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces EyePACS reliability diagrams (no calibration, held-out test). All four thresholds are below the diagonal --- the model is systematically underconfident.\relax }}{7}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:reliability-eyepacs}{{6}{7}{EyePACS reliability diagrams (no calibration, held-out test). All four thresholds are below the diagonal --- the model is systematically underconfident.\relax }{figure.caption.11}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Per-threshold ECE on the held-out test set, after per-threshold temperature scaling (top half) and after single-global temperature scaling (bottom half).\relax }}{8}{table.caption.10}\protected@file@percent }
+\newlabel{tab:cal-ece}{{5}{8}{Per-threshold ECE on the held-out test set, after per-threshold temperature scaling (top half) and after single-global temperature scaling (bottom half).\relax }{table.caption.10}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces APTOS reliability diagrams. The underconfidence pattern persists but is milder; APTOS is the closest to good calibration of the four folds.\relax }}{8}{figure.caption.12}\protected@file@percent }
+\newlabel{fig:reliability-aptos}{{7}{8}{APTOS reliability diagrams. The underconfidence pattern persists but is milder; APTOS is the closest to good calibration of the four folds.\relax }{figure.caption.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Per-Threshold Calibration on All Variants}{8}{subsection.4.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Messidor-2 reliability diagrams. Threshold 1 (Mild) is near-perfectly calibrated on this fold; threshold 4 (Proliferative) is the worst-calibrated across all (fold, threshold) cells in the study.\relax }}{9}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:reliability-messidor}{{8}{9}{Messidor-2 reliability diagrams. Threshold 1 (Mild) is near-perfectly calibrated on this fold; threshold 4 (Proliferative) is the worst-calibrated across all (fold, threshold) cells in the study.\relax }{figure.caption.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces DDR reliability diagrams. Threshold 2 (Moderate) is the best-calibrated cell in the entire matrix (ECE$_2 = 0.0272$); threshold 4 (Proliferative) is the worst on this fold, mirroring the Messidor-2 pattern.\relax }}{9}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:reliability-ddr}{{9}{9}{DDR reliability diagrams. Threshold 2 (Moderate) is the best-calibrated cell in the entire matrix (ECE$_2 = 0.0272$); threshold 4 (Proliferative) is the worst on this fold, mirroring the Messidor-2 pattern.\relax }{figure.caption.14}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Decision-Boundary Post-Processing}{9}{section.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Per-(variant, fold) ECE (mean across the four CORN thresholds) under three regimes: no calibration (raw), per-threshold temperature scaling, and single-global temperature scaling. Honest 50/50 5-rep CV: temperature fitted on train half of held-out test, ECE evaluated on test half.\relax }}{10}{table.caption.15}\protected@file@percent }
+\newlabel{tab:cal-all-variants}{{6}{10}{Per-(variant, fold) ECE (mean across the four CORN thresholds) under three regimes: no calibration (raw), per-threshold temperature scaling, and single-global temperature scaling. Honest 50/50 5-rep CV: temperature fitted on train half of held-out test, ECE evaluated on test half.\relax }{table.caption.15}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Confusion Analysis: Where the Baselines Fail}{10}{section.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Decision-boundary post-processing. Tuned QWK is the mean of 5 honest 50/50 stratified splits: bias is fitted on one half of the held-out test set, evaluated on the other half. No logits or weights are modified.\relax }}{11}{table.caption.16}\protected@file@percent }
+\newlabel{tab:decision-boundary}{{7}{11}{Decision-boundary post-processing. Tuned QWK is the mean of 5 honest 50/50 stratified splits: bias is fitted on one half of the held-out test set, evaluated on the other half. No logits or weights are modified.\relax }{table.caption.16}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces ConvNeXt-Tiny (3-channel baseline) on EyePACS holdout; row-normalized confusion matrix (\%).\relax }}{11}{table.caption.17}\protected@file@percent }
+\newlabel{tab:cm-eyepacs}{{8}{11}{ConvNeXt-Tiny (3-channel baseline) on EyePACS holdout; row-normalized confusion matrix (\%).\relax }{table.caption.17}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces ConvNeXt-Tiny (3-channel baseline) on APTOS holdout; row-normalized confusion matrix (\%).\relax }}{12}{table.caption.18}\protected@file@percent }
+\newlabel{tab:cm-aptos}{{9}{12}{ConvNeXt-Tiny (3-channel baseline) on APTOS holdout; row-normalized confusion matrix (\%).\relax }{table.caption.18}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces ConvNeXt-Tiny (3-channel baseline) on Messidor-2 holdout; row-normalized confusion matrix (\%).\relax }}{12}{table.caption.19}\protected@file@percent }
+\newlabel{tab:cm-messidor}{{10}{12}{ConvNeXt-Tiny (3-channel baseline) on Messidor-2 holdout; row-normalized confusion matrix (\%).\relax }{table.caption.19}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Discussion}{12}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}What the Baseline Establishes}{12}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}What the Seg Ablation Suggests}{12}{subsection.7.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces ConvNeXt-Tiny (3-channel baseline) on DDR holdout; row-normalized confusion matrix (\%).\relax }}{13}{table.caption.20}\protected@file@percent }
+\newlabel{tab:cm-ddr}{{11}{13}{ConvNeXt-Tiny (3-channel baseline) on DDR holdout; row-normalized confusion matrix (\%).\relax }{table.caption.20}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}What the Class-Balancing Ablation Suggests}{13}{subsection.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Implications for the Calibration Diagnostic}{13}{subsection.7.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Threats to Validity}{13}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{14}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Future Work}{15}{section.10}\protected@file@percent }
+\newlabel{sec:future-work}{{10}{15}{Future Work}{section.10}{}}
+\gdef \@abspage@last{16}

@@ -23,33 +23,35 @@ The 3-channel RGB baseline establishes the cross-domain reference. Values are QW
 
 ### 2.1 ConvNeXt-Tiny (3-channel, balanced)
 
+QWK, Acc, F1 (macro), and AUC (macro) computed from the per-sample predictions persisted in `saved/logs/per_sample_predictions/`. 95% CI is the paired-bootstrap CI on the same per-sample arrays (1000 resamples; artifact `saved/logs/bootstrap_cis.json`).
+
 | Held-out source | QWK | 95% CI | Acc | F1 (macro) | AUC (macro) |
 |:----------------|----:|:-------|----:|:----------:|:-----------:|
-| EyePACS | 0.4399 | _pending CI_ | 0.5540 | 0.3445 | 0.7501 |
-| APTOS | 0.8324 | _pending CI_ | 0.6038 | 0.4192 | 0.7731 |
-| Messidor-2 | 0.7250 | _pending CI_ | 0.7225 | 0.5706 | 0.8648 |
-| DDR | 0.7466 | _pending CI_ | 0.6830 | 0.4714 | 0.8712 |
-| **Mean ± SD** | 0.6860 ± 0.156 | _pending CI_ | 0.6408 ± 0.066 | 0.4514 ± 0.087 | 0.8148 ± 0.057 |
+| EyePACS | 0.4399 | [0.4325, 0.4481] | 0.5540 | 0.3445 | 0.7501 |
+| APTOS | 0.8323 | [0.8224, 0.8424] | 0.6035 | 0.4191 | 0.7731 |
+| Messidor-2 | 0.7261 | [0.6918, 0.7600] | 0.7231 | 0.5712 | 0.8648 |
+| DDR | 0.7466 | [0.7366, 0.7567] | 0.6831 | 0.4714 | 0.8712 |
+| **Mean ± SD** | 0.6860 ± 0.171 | — | 0.6409 ± 0.068 | 0.4516 ± 0.087 | 0.8148 ± 0.057 |
 
 ### 2.2 DeiT-3 Small @ 384 (3-channel, balanced)
 
 | Held-out source | QWK | 95% CI | Acc | F1 (macro) | AUC (macro) |
 |:----------------|----:|:-------|----:|:----------:|:-----------:|
-| EyePACS | 0.4107 | _pending CI_ | 0.4045 | 0.3149 | 0.7721 |
-| APTOS | **0.8643** | _pending CI_ | 0.6936 | 0.4824 | 0.8489 |
-| Messidor-2 | 0.6567 | _pending CI_ | 0.6835 | 0.5071 | 0.8346 |
-| DDR | 0.6801 | _pending CI_ | 0.6410 | 0.4337 | 0.8393 |
-| **Mean ± SD** | 0.6530 ± 0.186 | _pending CI_ | 0.6057 ± 0.136 | 0.4345 ± 0.085 | 0.8237 ± 0.035 |
+| EyePACS | 0.4107 | _not collected_ | 0.4045 | 0.3149 | 0.7721 |
+| APTOS | **0.8643** | _not collected_ | 0.6936 | 0.4824 | 0.8489 |
+| Messidor-2 | 0.6567 | _not collected_ | 0.6835 | 0.5071 | 0.8346 |
+| DDR | 0.6801 | _not collected_ | 0.6410 | 0.4337 | 0.8393 |
+| **Mean ± SD** | 0.6530 ± 0.186 | — | 0.6057 ± 0.136 | 0.4345 ± 0.085 | 0.8237 ± 0.035 |
 
 ### 2.3 MaxViT-Tiny @ 384 (3-channel, balanced)
 
 | Held-out source | QWK | 95% CI | Acc | F1 (macro) | AUC (macro) |
 |:----------------|----:|:-------|----:|:----------:|:-----------:|
-| EyePACS | 0.2027 | _pending CI_ | 0.6197 | 0.2447 | 0.6712 |
-| APTOS | 0.8366 | _pending CI_ | 0.7373 | 0.4815 | 0.7840 |
-| Messidor-2 | 0.3629 | _pending CI_ | 0.5889 | 0.3857 | 0.7584 |
-| DDR | 0.5827 | _pending CI_ | 0.6266 | 0.3698 | 0.7655 |
-| **Mean ± SD** | 0.4962 ± 0.275 | _pending CI_ | 0.6431 ± 0.065 | 0.3704 ± 0.097 | 0.7448 ± 0.050 |
+| EyePACS | 0.2027 | _not collected_ | 0.6197 | 0.2447 | 0.6712 |
+| APTOS | 0.8366 | _not collected_ | 0.7373 | 0.4815 | 0.7840 |
+| Messidor-2 | 0.3629 | _not collected_ | 0.5889 | 0.3857 | 0.7584 |
+| DDR | 0.5827 | _not collected_ | 0.6266 | 0.3698 | 0.7655 |
+| **Mean ± SD** | 0.4962 ± 0.275 | — | 0.6431 ± 0.065 | 0.3704 ± 0.097 | 0.7448 ± 0.050 |
 
 **Per-fold confusion matrices (ConvNeXt-Tiny 3-channel balanced baseline, row-normalized to 100%):**
 
@@ -97,9 +99,9 @@ The 3-channel RGB baseline establishes the cross-domain reference. Values are QW
 
 ## 3. Per-Threshold Calibration (Core Diagnostic)
 
-This is the central contribution of the work. ECE is computed on the binary "grade $\geq t$" prediction at each CORN sub-problem, with 10 equal-mass (quantile) bins. The aggregate ECE over the categorical prediction is reported as a summary for comparability with prior work.
+This is the central contribution of the work. ECE is computed on the binary "grade $\geq t$" prediction at each CORN sub-problem, with 10 equal-mass (quantile) bins. The aggregate ECE over the categorical prediction is reported as a summary for comparability with prior work. The diagnostic was extended post-hoc to the four auxiliary-channel variants (3-ch unbalanced, 4-ch soft, 4-ch Tversky, 4-ch morph); the full all-variants matrix is reported in the analysis writeup Table~\ref{tab:cal-all-variants} and Finding 10 below.
 
-**Headline finding (2026-08-11):** Both per-threshold temperature scaling and single-global temperature scaling *increase* ECE on the held-out test set, by 0.21–0.31 absolute on average. The fitted global temperature saturates at the upper bound (T = 5.0) on every fold, indicating that the optimizer is being driven to extreme softening that does not transfer from the in-distribution validation set to the out-of-distribution test set. This is an **independent confirmation** of the prior-literature finding that post-hoc temperature scaling fails under DR cross-dataset shift (Poyrazer et al., 2026; Sheng et al., 2026), reproduced here on a CORN ordinal regression head with the per-threshold decomposition. The per-threshold ECE without any calibration (Table 3.1) is substantially lower than the post-calibration ECE on every fold at every threshold. The validation-set ECE used to fit the temperatures (mean 0.13 across folds) is substantially lower than the test-set ECE (mean 0.19 across folds), and the calibration procedure over-corrects on the test set.
+**Headline finding (2026-08-11):** Both per-threshold temperature scaling and single-global temperature scaling *increase* ECE on the held-out test set, by 0.21–0.31 absolute on average. The fitted global temperature saturates at the upper bound (T = 5.0) on every fold, indicating that the optimizer is being driven to extreme softening that does not transfer from the in-distribution validation set to the out-of-distribution test set. This is an **independent confirmation** of the prior-literature finding that post-hoc temperature scaling fails under DR cross-dataset shift (Poyrazer et al., 2026; Sheng et al., 2026), reproduced here on a CORN ordinal regression head with the per-threshold decomposition. The per-threshold ECE without any calibration (Table 3.1) is substantially lower than the post-calibration ECE on every fold at every threshold. The validation-set ECE used to fit the temperatures (mean 0.13 across folds) is substantially lower than the test-set ECE (mean 0.19 across folds), and the calibration procedure over-corrects on the test set. The pathology is reproduced across all five ConvNeXt-Tiny variants: the single-global-temperature ECE is consistently worse than the raw ECE on 19 of 20 (variant, fold) cells; see Finding 10 and Table~\ref{tab:cal-all-variants} of the analysis writeup.
 
 ### 3.1 Per-Threshold ECE by Fold (No Calibration Adjustment)
 
@@ -208,45 +210,49 @@ Comparison of the per-threshold ECE (the present contribution) to the aggregate 
 
 ## 4. Auxiliary-Channel Comparison
 
-This is a methodological supplement to §3. The auxiliary-channel question is reported as QWK and secondary metrics only; the per-threshold calibration analysis of §3 is not repeated for these variants. Doing so is a follow-up.
+This is a methodological supplement to §3. The auxiliary-channel question is reported as QWK and secondary metrics. The per-threshold calibration analysis of §3 *was* re-run on all four auxiliary variants post-hoc; the full results are in Table~\ref{tab:cal-all-variants} of the analysis writeup and Finding 10 below.
 
 ### 4.1 Per-Variant QWK by Fold
 
-Each variant is trained on the same 3-source pool and evaluated on the held-out 4th source. Bold = best in row. Asterisk = statistically significant improvement over the 3-channel baseline (paired bootstrap).
+Each variant is trained on the same 3-source pool and evaluated on the held-out 4th source. Bold = best in row. Asterisk = statistically significant improvement over the 3-channel baseline (paired bootstrap, non-overlapping 95% CIs; CIs in §2.1 and Table~\ref{tab:bootstrap-cis} of the analysis writeup).
 
 | Held-out source | 3ch baseline | 4ch soft mask | 4ch Sobel | 4ch Tversky | 4ch morph | 5ch soft+Sobel | 5ch Tversky+Sobel |
 |:----------------|:------------:|:-------------:|:---------:|:-----------:|:---------:|:--------------:|:------------------:|
-| EyePACS | 0.4399 | **0.4725** (+3.26%) | _skipped_ | 0.4312 (–0.87%) | 0.3587 (–8.12%) | _skipped_ | _skipped_ |
-| APTOS | 0.8324 | **0.8543** (+2.19%) | _skipped_ | 0.7997 (–3.27%) | 0.8517 (+1.93%) | _skipped_ | _skipped_ |
-| Messidor-2 | 0.7250 | 0.6793 (–4.57%) | _skipped_ | 0.6909 (–3.41%) | 0.6837 (–4.13%) | _skipped_ | _skipped_ |
-| DDR | 0.7466 | 0.7660 (+1.94%) | _skipped_ | 0.7484 (+0.18%) | 0.7632 (+1.66%) | _skipped_ | _skipped_ |
-| **Mean (4 folds)** | 0.6860 | 0.6930 (+0.70%) | — | 0.6701 (–1.84%) | 0.6643 (–2.16%) | — | — |
+| EyePACS | 0.4399 | **0.4601** (+2.01pp) | _skipped_ | 0.4256 (–1.43pp) | 0.3668 (–7.31pp) | _skipped_ | _skipped_ |
+| APTOS | 0.8323 | **0.8615** (+2.92pp) | _skipped_ | 0.8082 (–2.41pp) | 0.8598 (+2.75pp) | _skipped_ | _skipped_ |
+| Messidor-2 | 0.7261 | 0.6664 (–5.97pp) | _skipped_ | 0.7021 (–2.40pp) | 0.6742 (–5.20pp) | _skipped_ | _skipped_ |
+| DDR | 0.7466 | 0.7600 (+1.33pp) | _skipped_ | 0.7347 (–1.19pp) | 0.7590 (+1.24pp) | _skipped_ | _skipped_ |
+| **Mean (4 folds)** | 0.6860 | 0.6870 (+0.07pp) | — | 0.6676 (–1.86pp) | 0.6650 (–2.13pp) | — | — |
 
-**Step C + Step F status (2026-08-11) — honest summary:** 4-channel seg ablation on ConvNeXt-Tiny across all 4 LODO folds. The result is **mixed rather than a clean win**. The 4-ch soft variant meets the ≥2% QWK improvement threshold on **2 of 4 folds** (EyePACS +3.26%, APTOS +2.19%) and is just below the threshold on a third (DDR +1.94%), but it decisively regresses on the fourth (Messidor-2 –4.57%). The **cross-fold mean ΔQWK for the 4-ch soft variant is just +0.70%** — essentially flat against the 3-ch baseline. The morph variant crosses on APTOS (+1.93%) but is below the threshold on Messidor-2 (–4.13%) and DDR (+1.66%) and severely regresses on EyePACS (–8.12%, the largest single regression in the ablation); cross-fold mean **–2.16%**. The **Tversky variant consistently hurts or is flat** across all four folds (EyePACS –0.87%, APTOS –3.27%, Messidor-2 –3.41%, DDR +0.18%; cross-fold mean **–1.84%**). Even the diagnostic DDR-on-DDR flip (+1.94% for 4-ch soft, where the segmentation model was trained on DDR lesion ground truth) does not cross the pre-registered bar. The honest conclusion is that the segmentation auxiliary channel is **not a robust cross-domain improvement** at the effect size we pre-registered; the cross-fold mean for the soft variant is flat and one fold significantly regresses, the Tversky variant hurts or is flat on every fold, and the morph variant regresses severely on EyePACS.
+All per-fold QWK values are computed from the per-sample predictions persisted in `saved/logs/per_sample_predictions/` (one inference run per (variant, fold), no retraining). The same arrays power the bootstrap CIs in §2.1 / Table~\ref{tab:bootstrap-cis} of the analysis writeup and the decision-boundary tuning in §7 of this document.
+
+**Step C + Step F status (2026-08-11) — honest summary:** 4-channel seg ablation on ConvNeXt-Tiny across all 4 LODO folds. The result is **mixed rather than a clean win**. The 4-ch soft variant meets the ≥2pp QWK improvement threshold on **2 of 4 folds** (EyePACS +2.01pp, APTOS +2.92pp), is just below the threshold on a third (DDR +1.33pp), but decisively regresses on the fourth (Messidor-2 –5.97pp). The **cross-fold mean ΔQWK for the 4-ch soft variant is just +0.07pp** — essentially flat against the 3-ch baseline. The morph variant is at +2.75pp on APTOS, below the threshold on DDR (+1.24pp), and severely regresses on EyePACS (–7.31pp, the largest single regression in the ablation); cross-fold mean **–2.13pp**. The **Tversky variant consistently hurts or is flat** across all four folds (EyePACS –1.43pp, APTOS –2.41pp, Messidor-2 –2.40pp, DDR –1.19pp; cross-fold mean **–1.86pp**). Even the diagnostic DDR-on-DDR test (+1.33pp for 4-ch soft, where the segmentation model was trained on DDR lesion ground truth) does not cross the pre-registered bar. Bootstrap 95% CIs (§2.1) show the +2.92pp APTOS gain is statistically meaningful at α=0.05 (4-ch soft CI [0.851, 0.872] vs 3-ch balanced CI [0.822, 0.842], non-overlapping); the +2.01pp EyePACS gain is *also* significant (3-ch baseline CI [0.433, 0.448] vs 4-ch soft CI [0.453, 0.467], non-overlapping with a 0.005 gap); the +1.33pp DDR gain is *not* significant (CIs overlap on [0.750, 0.757]); the –5.97pp Messidor-2 regression is significant (4-ch soft CI [0.624, 0.703] lies almost wholly below 3-ch balanced CI [0.692, 0.760], tail overlap only). The honest conclusion is that the segmentation auxiliary channel is **not a robust cross-domain improvement** at the effect size we pre-registered; the cross-fold mean for the soft variant is flat and one fold significantly regresses, the Tversky variant hurts or is flat on every fold, and the morph variant regresses severely on EyePACS.
 
 ### 4.2 Per-Variant Secondary Metrics (Mean Across Folds)
+
+All values are computed from the per-sample predictions persisted in `saved/logs/per_sample_predictions/`.
 
 | Variant | EyePACS | APTOS | Messidor-2 | DDR | Mean ± SD |
 |:--------|--------:|------:|-----------:|----:|----------:|
 | **QWK** |  |  |  |  |  |
-| &nbsp;&nbsp;&nbsp;3ch baseline | 0.440 | 0.832 | 0.725 | 0.747 | 0.686 ± 0.170 |
-| &nbsp;&nbsp;&nbsp;4ch soft mask | 0.473 | 0.854 | 0.679 | 0.766 | 0.693 ± 0.163 |
-| &nbsp;&nbsp;&nbsp;4ch Tversky | 0.431 | 0.800 | 0.691 | 0.748 | 0.668 ± 0.164 |
-| &nbsp;&nbsp;&nbsp;4ch morph | 0.359 | 0.852 | 0.684 | 0.763 | 0.664 ± 0.215 |
+| &nbsp;&nbsp;&nbsp;3ch baseline | 0.440 | 0.832 | 0.726 | 0.747 | 0.686 ± 0.171 |
+| &nbsp;&nbsp;&nbsp;4ch soft mask | 0.460 | 0.862 | 0.666 | 0.760 | 0.687 ± 0.171 |
+| &nbsp;&nbsp;&nbsp;4ch Tversky | 0.426 | 0.808 | 0.702 | 0.735 | 0.668 ± 0.167 |
+| &nbsp;&nbsp;&nbsp;4ch morph | 0.367 | 0.860 | 0.674 | 0.759 | 0.665 ± 0.213 |
 | **Accuracy** |  |  |  |  |  |
-| &nbsp;&nbsp;&nbsp;3ch baseline | 0.554 | 0.604 | 0.722 | 0.683 | 0.641 ± 0.076 |
-| &nbsp;&nbsp;&nbsp;4ch soft mask | 0.552 | 0.662 | 0.707 | 0.709 | 0.658 ± 0.074 |
-| &nbsp;&nbsp;&nbsp;4ch Tversky | 0.492 | 0.529 | 0.709 | 0.712 | 0.610 ± 0.117 |
-| &nbsp;&nbsp;&nbsp;4ch morph | 0.289 | 0.637 | 0.690 | 0.693 | 0.577 ± 0.194 |
+| &nbsp;&nbsp;&nbsp;3ch baseline | 0.554 | 0.603 | 0.723 | 0.683 | 0.641 ± 0.076 |
+| &nbsp;&nbsp;&nbsp;4ch soft mask | 0.554 | 0.684 | 0.700 | 0.710 | 0.662 ± 0.073 |
+| &nbsp;&nbsp;&nbsp;4ch Tversky | 0.493 | 0.546 | 0.715 | 0.707 | 0.615 ± 0.113 |
+| &nbsp;&nbsp;&nbsp;4ch morph | 0.333 | 0.653 | 0.685 | 0.692 | 0.591 ± 0.173 |
 | **F1 (macro)** |  |  |  |  |  |
-| &nbsp;&nbsp;&nbsp;3ch baseline | 0.344 | 0.419 | 0.571 | 0.471 | 0.451 ± 0.095 |
-| &nbsp;&nbsp;&nbsp;4ch soft mask | 0.362 | 0.483 | 0.535 | 0.502 | 0.470 ± 0.075 |
-| &nbsp;&nbsp;&nbsp;4ch Tversky | 0.275 | 0.329 | 0.544 | 0.494 | 0.411 ± 0.129 |
-| &nbsp;&nbsp;&nbsp;4ch morph | 0.299 | 0.452 | 0.559 | 0.506 | 0.454 ± 0.112 |
+| &nbsp;&nbsp;&nbsp;3ch baseline | 0.344 | 0.419 | 0.571 | 0.471 | 0.452 ± 0.095 |
+| &nbsp;&nbsp;&nbsp;4ch soft mask | 0.345 | 0.498 | 0.525 | 0.492 | 0.465 ± 0.081 |
+| &nbsp;&nbsp;&nbsp;4ch Tversky | 0.279 | 0.349 | 0.558 | 0.486 | 0.418 ± 0.127 |
+| &nbsp;&nbsp;&nbsp;4ch morph | 0.300 | 0.458 | 0.542 | 0.499 | 0.450 ± 0.105 |
 | **AUC (macro)** |  |  |  |  |  |
 | &nbsp;&nbsp;&nbsp;3ch baseline | 0.750 | 0.773 | 0.865 | 0.871 | 0.815 ± 0.062 |
-| &nbsp;&nbsp;&nbsp;4ch soft mask | 0.776 | 0.815 | 0.858 | 0.871 | 0.830 ± 0.043 |
-| &nbsp;&nbsp;&nbsp;4ch Tversky | 0.756 | 0.750 | 0.864 | 0.872 | 0.811 ± 0.067 |
+| &nbsp;&nbsp;&nbsp;4ch soft mask | 0.771 | 0.825 | 0.854 | 0.869 | 0.830 ± 0.044 |
+| &nbsp;&nbsp;&nbsp;4ch Tversky | 0.753 | 0.760 | 0.866 | 0.872 | 0.813 ± 0.065 |
 | &nbsp;&nbsp;&nbsp;4ch morph | 0.768 | 0.771 | 0.845 | 0.873 | 0.814 ± 0.053 |
 ### 4.3 Per-Class F1 (Mean Across Folds)
 
@@ -290,10 +296,10 @@ QWK on the held-out domain's test set, varying only the backbone architecture.
 | Backbone | EyePACS | APTOS | Messidor-2 | DDR | Mean ± SD | Params (M) |
 |:---------|:--------:|:--------:|:--------:|:--------:|:---------:|:----------:|
 | ConvNeXt-Tiny | 0.4399 | 0.8324 | 0.7250 | 0.7466 | 0.6860 ± 0.171 | 28 |
-| ConvNeXt-Small | _skipped — out of scope for the 24-h budget_ |  |  |  |  | 50 |
+| ConvNeXt-Small | _not run — see Future Work_ |  |  |  |  | 50 |
 | DeiT-3 Small (384) | 0.4107 | 0.8643 | 0.6567 | 0.6801 | 0.6530 ± 0.186 | 22 |
 | MaxViT Tiny (384) | 0.2027 | 0.8366 | 0.3629 | 0.5827 | 0.4962 ± 0.275 | 31 |
-| SwinV2-Base (192→384) | _skipped — out of scope for the 24-h budget_ |  |  |  |  | 88 |
+| SwinV2-Base (192→384) | _not run — see Future Work_ |  |  |  |  | 88 |
 
 ## 6. Class-Balancing Ablation
 
@@ -301,13 +307,14 @@ Effect of the 3:1 class-balancing step on the 3-channel baseline (ConvNeXt-Tiny)
 
 | Held-out source | QWK (balanced) | QWK (unbalanced) | Δ |
 |:----------------|:--------------:|:----------------:|:-:|
-| EyePACS | 0.4399 | 0.4491 | **+0.0092** (+2.09%) |
-| APTOS | 0.8324 | 0.8607 | **+0.0283** (+3.40%) |
-| Messidor-2 | 0.7250 | 0.7661 | **+0.0411** (+5.67%) |
-| DDR | 0.7466 | 0.7759 | **+0.0293** (+3.92%) |
-| **Mean ± SD** | 0.6860 ± 0.156 | 0.7129 ± 0.171 | **+0.0270** (+3.93%) |
+| EyePACS | 0.4399 | 0.4491 | **+0.0092** (+0.92pp) |
+| APTOS | 0.8324 | 0.8607 | **+0.0283** (+2.83pp) |
+| Messidor-2 | 0.7250 | 0.7661 | **+0.0411** (+4.12pp) |
+| DDR | 0.7466 | 0.7759 | **+0.0293** (+2.93pp) |
+| **Mean ± SD** | 0.6860 ± 0.171 | 0.7129 ± 0.181 | **+0.0270** (+2.70pp) |
 
-**Status (2026-08-11):** All 4 unbalanced folds complete. The 3:1 class-balancing step *hurts* the cross-domain QWK on every fold; the unbalanced baseline is uniformly +2% to +6% better than the balanced baseline. The cross-fold mean Δ is **+3.93%** in favour of **removing** the class-balancing step. This is opposite of the prior expectation that balancing would help under class-imbalanced cross-domain shift. The likely explanation: the 3:1 down-sampling discards the majority-class structure that the ConvNeXt-Tiny backbone benefits from, and the validation-set QWK used for early stopping compensates partially but does not recover the lost signal. This is a stronger effect than the segmentation auxiliary-channel ablation (mean ΔQWK +0.70% for the 4-ch soft variant); the class-balancing decision is the dominant single ablation result in this study.
+**Status (2026-08-11):** All 4 unbalanced folds complete. The 3:1 class-balancing step *hurts* the cross-domain QWK on every fold; the unbalanced baseline is uniformly +0.92pp to +4.12pp better than the balanced baseline. The cross-fold mean Δ is **+2.70pp** in favour of **removing** the class-balancing step. This is opposite of the prior expectation that balancing would help under class-imbalanced cross-domain shift. The likely explanation: the 3:1 down-sampling discards the majority-class structure that the ConvNeXt-Tiny backbone benefits from, and the validation-set QWK used for early stopping compensates partially but does not recover the lost signal. This is a stronger effect than the segmentation auxiliary-channel ablation (mean ΔQWK +0.07pp for the 4-ch soft variant); the class-balancing decision is the dominant single ablation result in this study.
+
 
 Per-class F1 with and without balancing (mean across folds):
 
@@ -423,22 +430,22 @@ For each held-out source, the model that achieves the worst QWK is identified an
 
 Each finding below is backed by a specific table cell above.
 
-- **Finding 1 (cross-domain baseline):** ConvNeXt-Tiny achieves a mean cross-domain QWK of 0.686 ± 0.156 on the 3-channel balanced baseline (Table 2.1), the best of three backbones tested. DeiT-3 Small/384 is close (0.653 ± 0.186), MaxViT-Tiny/384 is the weakest (0.496 ± 0.275). EyePACS is the hardest fold for every architecture (max QWK 0.44 across all three). The cross-fold variance is dominated by the EyePACS holdout.
-- **Finding 2 (segmentation auxiliary):** The 4-channel segmentation auxiliary channel is **not a robust cross-domain improvement** at the pre-registered ≥2% QWK threshold. The 4-ch soft variant crosses the threshold on 2 of 4 folds (APTOS +2.19%, EyePACS +3.26%) but decisively regresses on Messidor-2 (–4.57%); the cross-fold mean ΔQWK is just +0.70%. The 4-ch Tversky variant hurts or is flat on every fold (mean –1.84%). The 4-ch morph variant has a severe regression on EyePACS (–8.12%, the largest single regression in the ablation) and a cross-fold mean of –2.16%.
-- **Finding 3 (class balancing):** The 3:1 class-balancing step *hurts* the cross-domain QWK on every fold. The unbalanced baseline is uniformly +2% to +6% better than the balanced baseline (mean ΔQWK +3.93% in favour of unbalanced). This is the dominant single ablation effect in the study — larger than the segmentation auxiliary-channel effect.
+- **Finding 1 (cross-domain baseline):** ConvNeXt-Tiny achieves a mean cross-domain QWK of 0.686 ± 0.171 on the 3-channel balanced baseline (Table 2.1), the best of three backbones tested. DeiT-3 Small/384 is close (0.653 ± 0.186), MaxViT-Tiny/384 is the weakest (0.496 ± 0.275). EyePACS is the hardest fold for every architecture (max QWK 0.44 across all three). The cross-fold variance is dominated by the EyePACS holdout.
+- **Finding 2 (segmentation auxiliary):** The 4-channel segmentation auxiliary channel is **not a robust cross-domain improvement** at the pre-registered ≥2pp QWK threshold. The 4-ch soft variant crosses the threshold on 2 of 4 folds (APTOS +2.92pp, EyePACS +2.01pp) but decisively regresses on Messidor-2 (–5.97pp); the cross-fold mean ΔQWK is just +0.07pp. The 4-ch Tversky variant hurts or is flat on every fold (mean –1.86pp). The 4-ch morph variant has a severe regression on EyePACS (–7.31pp, the largest single regression in the ablation) and a cross-fold mean of –2.13pp.
+- **Finding 3 (class balancing):** The 3:1 class-balancing step *hurts* the cross-domain QWK on every fold. The unbalanced baseline is uniformly +0.92pp to +4.12pp better than the balanced baseline (mean ΔQWK +2.70pp in favour of unbalanced, on QWK). This is the dominant single ablation effect in the study — larger than the segmentation auxiliary-channel effect.
 - **Finding 4 (calibration diagnostic):** Both per-threshold and single-global temperature scaling *increase* ECE on the held-out test set (mean ΔECE +0.30 absolute), with the fitted global temperature saturating at the upper bound (T = 5.0) on every fold. The validation-set ECE used to fit temperatures (mean 0.13) is substantially lower than the test-set ECE (mean 0.19), and the calibration procedure over-corrects on the test set. This is an independent confirmation of the prior-literature finding that post-hoc temperature scaling fails under DR cross-dataset shift (Poyrazer et al., 2026). The reliability diagrams (§3.5) reveal why: the model is systematically **under-confident** on every fold and threshold, with empirical frequencies plateauing at 0.6–0.7 even in the topmost predicted-probability bin — the opposite of the standard overconfidence picture that temperature scaling is designed to fix.
 - **Finding 5 (per-threshold ECE pattern):** The per-threshold ECE without calibration (§3.1) is non-uniform across thresholds and folds. ECE$_4$ (Proliferative) is the highest on 3 of 4 folds (EyePACS: 0.27, APTOS: 0.23, Messidor-2: 0.35, DDR: 0.29). The Mild-class threshold (ECE$_1$) is highest on EyePACS (0.30), where the Mild-class prevalence is the lowest (0.07). The per-threshold range (max ECE – min ECE) is 0.05 on APTOS and 0.29 on Messidor-2 — a sixfold spread.
 - **Finding 6 (confusion matrix — Mild-class failure mode):** The per-fold confusion matrices (§2 of this document) show that the model is essentially unable to predict Mild (grade 1) on any fold. The per-class F1 for Mild is below 0.13 on every fold (EyePACS 0.127, APTOS 0.010, Messidor-2 0.066, DDR 0.119); true Mild is collapsed into No-DR at rates of 63% (EyePACS), 92% (Messidor-2), and 75% (DDR). This is the prior-literature Mild-class failure mode (Poyrazer et al., 2026) reproduced unequivocally on the CORN head and is the dominant single-class failure mode across the study.
-- **Finding 7 (per-class F1 — class balancing interpretation):** The +3.93% mean ΔQWK improvement from unbalanced training (§6) is *not* uniform across classes. The Moderate NPDR (grade 2) class improves substantially on every fold (Δ F1 +0.07 to +0.25). The Severe (grade 3) class *collapses* on Messidor-2 under unbalanced training (F1 0.73 → 0.35, Δ −0.38), explaining why the macro-F1 on Messidor-2 regresses (−0.08) despite the QWK improving. The net QWK improvement is driven by the better-calibrated Moderate class; the squared-weight penalty is smaller at the centre of the distribution than at the extremes, so improving the most-confused grade boundary (1↔2 and 2↔3) translates to a QWK gain even when the macro-F1 degrades.
-- **Finding 8 (per-variant secondary metrics):** The 4-ch soft variant has the highest mean QWK (0.693), mean AUC (0.830), and mean macro-F1 (0.470) of the four variants in §4.2, but as established in §4.1 the lead is fold-conditional. The 4-ch morph variant has a striking accuracy collapse on EyePACS (0.554 → 0.289, –47% relative), the same failure mode that produces the worst QWK in the study on that fold (–8.12%). The 4-ch Tversky variant has uniformly worse metrics across the board (mean QWK 0.668, mean accuracy 0.610, mean macro-F1 0.411). The Mild class is un-predictable under every variant on every fold (F1 < 0.16); the segmentation channel does not rescue it.
-- **Finding 9 (decision-boundary post-processing — §7):** A purely post-hoc additive bias on the four CORN sigmoid thresholds, picked by honest 50/50 out-of-bias-sample CV, gives a non-negative ΔQWK on 18 of 20 (variant, fold) cells and a mean ΔQWK of +0.025 across variants. The largest single gain is 3ch unbalanced × EyePACS (+0.0897, bias $b = -0.23$); the largest variant-mean gain is 4-ch Tversky (+0.0405). The procedure is strictly post-hoc — no model retraining, no logit modification, no probability rescaling — and is therefore "free" under any deployment budget. The honest CV numbers are a conservative lower bound; the in-sample optima (visible in `docs/analysis/figures/decision_boundary/`) are substantially higher (e.g. +0.18 in-sample for 3ch unbalanced × EyePACS). Bootstrap-CI on the held-out test QWK shows the segmentation gain is statistically meaningful on APTOS (4ch soft vs 3ch baseline: 0.862 [0.851, 0.872] vs 0.832 [0.822, 0.842], non-overlapping 95% CIs) but **not** on EyePACS (3ch baseline 0.440 [0.432, 0.448] vs 4ch soft 0.460 [0.453, 0.467], CIs overlap).
+- **Finding 7 (per-class F1 — class balancing interpretation):** The +2.70pp mean ΔQWK improvement from unbalanced training (§6) is *not* uniform across classes. The Moderate NPDR (grade 2) class improves substantially on every fold (Δ F1 +0.07 to +0.25). The Severe (grade 3) class *collapses* on Messidor-2 under unbalanced training (F1 0.73 → 0.35, Δ −0.38), explaining why the macro-F1 on Messidor-2 regresses (−0.08) despite the QWK improving. The net QWK improvement is driven by the better-calibrated Moderate class; the squared-weight penalty is smaller at the centre of the distribution than at the extremes, so improving the most-confused grade boundary (1↔2 and 2↔3) translates to a QWK gain even when the macro-F1 degrades.
+- **Finding 8 (per-variant secondary metrics):** The 4-ch soft variant has the highest mean QWK (0.687), mean AUC (0.830), and mean macro-F1 (0.465) of the four variants in §4.2, but as established in §4.1 the lead is fold-conditional and the cross-fold mean ΔQWK is just +0.07pp. The 4-ch morph variant has a striking accuracy collapse on EyePACS (0.554 → 0.333, –40% relative), the same failure mode that produces the worst QWK in the study on that fold (–7.31pp). The 4-ch Tversky variant has uniformly worse metrics across the board (mean QWK 0.668, mean accuracy 0.615, mean macro-F1 0.418). The Mild class is un-predictable under every variant on every fold (F1 < 0.16); the segmentation channel does not rescue it.
+- **Finding 9 (decision-boundary post-processing — §7):** A purely post-hoc additive bias on the four CORN sigmoid thresholds, picked by honest 50/50 out-of-bias-sample CV, gives a non-negative ΔQWK on 18 of 20 (variant, fold) cells and a mean ΔQWK of +0.025 across variants. The largest single gain is 3ch unbalanced × EyePACS (+0.0897, bias $b = -0.23$); the largest variant-mean gain is 4-ch Tversky (+0.0405). The procedure is strictly post-hoc — no model retraining, no logit modification, no probability rescaling — and is therefore "free" under any deployment budget. The honest CV numbers are a conservative lower bound; the in-sample optima (visible in `docs/analysis/figures/decision_boundary/`) are substantially higher (e.g. +0.18 in-sample for 3ch unbalanced × EyePACS). Bootstrap-CI on the held-out test QWK shows the segmentation gain is statistically meaningful on APTOS (4ch soft vs 3ch baseline: 0.862 [0.851, 0.872] vs 0.832 [0.822, 0.842], non-overlapping 95% CIs) and **also** on EyePACS (3ch baseline 0.440 [0.433, 0.448] vs 4ch soft 0.460 [0.453, 0.467], non-overlapping with a 0.005 gap); the DDR gain is not significant (CIs overlap on [0.750, 0.757]).
 - **Finding 10 (calibration pathology is variant-invariant — §3 + new all-variant diagnostic):** The "global temperature saturates at $T = 5.0$" pathology first reported on the 3-ch balanced baseline (Finding 4) is **invariant across all five ConvNeXt-Tiny variants** — the optimized global temperature saturates at the optimizer's upper bound on 19 of 20 (variant, fold) cells in the new all-variants diagnostic. Mean global-T ΔECE is +0.10 to +0.18 across every variant (worst on 4-ch morph: +0.0997 mean; best on 3-ch balanced: +0.1251 mean). Per-threshold temperature scaling still gives small positive gains (mean ΔECE −0.015 to −0.040), with the 4-ch morph variant gaining the most (−0.0401 mean). The segmentation auxiliary does not rescue the global-T pathology.
 
 ## 12. Future Work
 
-The following items are defined in the methodology and listed in the analysis writeup §Future Work but are not yet executed or populated in the tables above. Each is a concrete follow-up with a known compute budget and a known implementation surface; none requires methodological design work.
+The following items are defined in the methodology and listed in the analysis writeup Future Work section but are not yet executed or populated in the tables above. Each is a concrete follow-up with a known compute budget and known implementation surface; none requires methodological design work. Items marked Completed 2026-08-12 have been executed in the post-hoc analysis round.
 
-- **Per-fold secondary metrics for the architecture comparison (§2.1–§2.3 of this document).** The accuracy, F1 (macro), and AUC (macro) columns are populated for the 3-channel ConvNeXt-Tiny baseline, DeiT-3 Small/384, and MaxViT-Tiny/384. The 95% bootstrap confidence intervals are pending.
+- **Per-fold secondary metrics for the architecture comparison (§2.1–§2.3 of this document).** The accuracy, F1 (macro), and AUC (macro) columns are populated for the 3-channel ConvNeXt-Tiny baseline, DeiT-3 Small/384, and MaxViT-Tiny/384. The 95% bootstrap confidence intervals are populated for ConvNeXt-Tiny (see §2.1 and Table~\ref{tab:bootstrap-cis} of the analysis writeup); DeiT-3 and MaxViT-Tiny intervals are pending — see the discrete follow-up below.
 - **Auxiliary-channel ablation matrix completion.** The 4-channel Sobel variant, the 5-channel (soft + Sobel) variant, and the 5-channel (Tversky + Sobel) variant are not run in this study. The Sobel auxiliary pool is already pre-computed at preprocessing time; the 5-channel variants require a single training-time concatenation change. Estimated compute: ~12–14 runs × ~25 min/run on ConvNeXt-Tiny = ~5–6 hours.
 - **Full backbone family.** The architecture comparison is across three backbones (ConvNeXt-Tiny, DeiT-3 Small/384, MaxViT-Tiny/384). ConvNeXt-Small (~50M parameters) and SwinV2-Base (192→384 transfer, ~88M parameters) are not evaluated. The runner, the loss function, and the LODO split are all in place; only the model yaml and the per-arch hyperparameter override (SwinV2's batch size 12) need to be configured. Estimated compute: ~5–8 hours of training across 8 folds.
 - **Seed sensitivity for the high-priority variants (§9 of this document).** Repeat the 3-channel baseline (ConvNeXt-Tiny only) and the 4-channel soft-mask variant across a small pre-registered seed set (e.g., 3 seeds per fold). The seed set is to be pre-registered before any seed-sensitivity run is started. Estimated compute: 4 folds × 2 variants × 2 additional seeds = 16 runs at ~25 min each ≈ ~7 hours.
