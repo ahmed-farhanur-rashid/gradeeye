@@ -13,3 +13,7 @@
 [2026-08-11 13:00:56] starting Step B (3-channel baseline: 12 runs)
 [2026-08-11 13:00:56] Step B complete
 [2026-08-11 13:00:56] starting Step F (4ch ablation eyepacs+ddr: 6 runs)
+[2026-08-11 14:53:17] Step F complete
+[2026-08-11 14:53:17] starting Step E (unbalanced baseline: 4 runs)
+[2026-08-11 19:25:35] Step E complete
+[2026-08-11 19:25:35] === pipeline_v3 complete (Steps B/C/E/F). Await command for Step D. ===

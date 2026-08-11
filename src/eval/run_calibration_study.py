@@ -40,7 +40,7 @@ from src.models.corn import corn_predict_probas
 from src.training.checkpoint_io import load_model_from_checkpoint
 
 
-FOLDS = ("eyepacs", "aptos", "messidor2")
+FOLDS = ("eyepacs", "aptos", "messidor2", "ddr")
 
 
 def collect_logits(
@@ -118,17 +118,23 @@ def _evaluate(logits: np.ndarray, labels: np.ndarray, temperatures: np.ndarray |
 def run_fold(fold: str, args: argparse.Namespace, device: str) -> dict[str, Any]:
     """Run one fold and return a serializable result dictionary."""
     checkpoint = Path(args.checkpoint_root) / fold / "convnext_tiny" / f"lodo_{fold}_convnext_tiny_best.pt"
-    val_manifest = Path(args.split_root) / f"lodo_{fold}_val.csv"
-    full_manifest = Path(args.split_root) / f"lodo_{fold}_test_full.csv"
-    matched_manifest = Path(args.split_root) / f"lodo_{fold}_test_matched.csv"
-    for path in (checkpoint, val_manifest, full_manifest, matched_manifest):
-        if not path.exists():
-            raise FileNotFoundError(path)
+    if not checkpoint.exists():
+        raise FileNotFoundError(checkpoint)
 
     print(f"\n=== {fold}: {checkpoint} ===")
     model, config = load_model_from_checkpoint(str(checkpoint), device, use_ema=not args.no_ema)
     img_size = args.img_size or config.get("model", {}).get("img_size")
     batch_size = args.batch_size
+
+    # Read manifest paths from the saved checkpoint config (top-level manifest_val,
+    # manifest_test) so we don't have to re-derive the LODO manifest layout. If not present,
+    # fall back to args.split_root / lodo_<fold>_<split>.csv.
+    val_manifest = Path(config.get("manifest_val") or (Path(args.split_root) / f"lodo_{fold}_val.csv"))
+    full_manifest = Path(config.get("manifest_test") or (Path(args.split_root) / f"lodo_{fold}_test_full.csv"))
+    matched_manifest = Path(args.split_root) / f"lodo_{fold}_test_matched.csv"
+    for path in (val_manifest, full_manifest, matched_manifest):
+        if not path.exists():
+            raise FileNotFoundError(path)
 
     print(f"Collecting validation logits ({val_manifest})")
     val_logits, val_labels = collect_logits(model, str(val_manifest), batch_size, device, img_size)
@@ -162,6 +168,31 @@ def run_fold(fold: str, args: argparse.Namespace, device: str) -> dict[str, Any]
             "global": _evaluate(matched_logits, matched_labels, global_t),
         },
     }
+
+    # Also recompute ECE per threshold after temperature scaling — the raw_ece above
+    # is pre-temperature only, but the comparison §3.2/§3.3/§3.4 needs post-T ECE.
+    def _post_t_ece(logits, labels, temperatures):
+        scaled = apply_temperature(logits, temperatures)
+        probs = 1.0 / (1.0 + np.exp(-np.clip(scaled, -80.0, 80.0)))
+        return _ece_table(probs, labels, args.n_bins)
+
+    calibrated_ece = {
+        "validation": {
+            "raw": raw_ece["validation"],
+            "per_threshold": _post_t_ece(val_logits, val_labels, per_t),
+            "global": _post_t_ece(val_logits, val_labels, global_t),
+        },
+        "full": {
+            "raw": raw_ece["full"],
+            "per_threshold": _post_t_ece(full_logits, full_labels, per_t),
+            "global": _post_t_ece(full_logits, full_labels, global_t),
+        },
+        "matched": {
+            "raw": raw_ece["matched"],
+            "per_threshold": _post_t_ece(matched_logits, matched_labels, per_t),
+            "global": _post_t_ece(matched_logits, matched_labels, global_t),
+        },
+    }
     return {
         "fold": fold,
         "checkpoint": str(checkpoint),
@@ -179,6 +210,7 @@ def run_fold(fold: str, args: argparse.Namespace, device: str) -> dict[str, Any]
         },
         "raw_ece": raw_ece,
         "calibrated_metrics": calibrated,
+        "calibrated_ece": calibrated_ece,
     }
 
 

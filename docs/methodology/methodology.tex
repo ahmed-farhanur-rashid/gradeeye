@@ -1,0 +1,321 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\title{Methodology: Per-Threshold Calibration of Ordinal Regression under Domain Shift in Diabetic Retinopathy Grading}
+\author{gradeeye}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Problem Statement}
+Diabetic retinopathy (DR) is a leading cause of preventable blindness worldwide. Automated grading of fundus photographs into severity levels is a clinically meaningful screening task, but conventional training pipelines typically assume that the training and deployment populations are drawn from the same data distribution. In practice, fundus images are acquired from heterogeneous devices, patient populations, and clinical sites, which induces substantial \emph{domain shift} between training and deployment cohorts. Models that achieve strong in-domain accuracy frequently degrade catastrophically when applied to out-of-domain imagery.
+
+A growing body of recent work has established that domain shift matters specifically for DR grading: the GDRNet / GDRBench line of work (Che et al., 2023) introduced an eight-dataset public benchmark with explicit leave-one-domain-out and extreme single-domain-generalization protocols and showed that standard training recipes suffer large accuracy and AUC gaps under cross-domain evaluation. The DRGen work (Atwany \& Yaqub, 2022) framed the cross-domain gap as a generalization problem and proposed training-time interventions to seek flatter minima. The DECO line of work (Xia et al., 2024) addressed the same gap through representation disentanglement of retinal and domain-specific latents. These contributions establish that \emph{closing the cross-domain accuracy gap} is an active research line; methods to achieve it now exist (FundusAug, hybrid losses, domain-class-aware rebalancing, representation disentanglement, augmentation-based domain generalization).
+
+This work does not propose a new method to close the cross-domain accuracy gap. A separate, less-studied question is whether the \emph{probabilities} that these models produce are trustworthy under domain shift --- that is, whether the predicted confidences reflect the true posterior probability of the predicted grade. Recently, El Bellaj et al. (2026) proposed an evidential ordinal regression head and reported that uncertainty under domain shift is miscalibrated, and Sheng, Dong, Wu \& Liang (2026, ``ORDER-DR'') reported that scalar expected-calibration error on a binarized referable-DR endpoint nearly quadruples from in-distribution (0.049) to external validation (0.160) on the same disease. These are the closest existing signals that calibration degrades under cross-dataset shift in DR grading.
+
+A converging line of evidence comes from Poyrazer, Yağcı \& Erten (2026), who benchmarked three pretrained vision backbones as frozen feature extractors on APTOS development and Messidor-2 external validation and reported that \emph{temperature scaling --- the standard post-hoc calibration remedy --- fails under cross-dataset shift} in DR grading: ECE was reported below 0.022 on the development set but in the range 0.086--0.149 on the external set after re-scaling, i.e.\ the recalibration step did not transfer. The same study independently reported that the Mild (grade 1) class is catastrophically vulnerable under shift, with F1 = 0.000 for two of three encoders and F1 = 0.153 for the best. This is the strongest single piece of prior evidence that \emph{aggregate} calibration tools are inadequate under DR cross-dataset shift, and that the \emph{earliest clinically meaningful severity grade} is disproportionately affected.
+
+The present work addresses a finer-grained version of the calibration question. The CORN-style ordinal regression head (Cao, Mirjalili \& Raschka, 2020) decomposes a $K$-class ordinal problem into $K-1$ independent binary sub-problems, one per ordinal threshold. Recent calibration reports in the DR literature --- including those in the papers cited above --- report a single aggregate expected-calibration error on the final categorical prediction, or a single scalar on a binarized referable endpoint. The aggregate hides the question: \emph{each of the CORN sub-problems corresponds to a different class-imbalance regime, and their calibration may diverge under domain shift.} This work asks whether the per-threshold calibration of a CORN ordinal regression head is jointly degraded and structurally divergent under true leave-one-domain-out generalization across multiple DR domains, and whether that divergence is interpretable in terms of the per-threshold class distribution. The Mild (grade 1) threshold is the analytically prior target because the prior literature independently flags it under both ordinal and non-ordinal mechanisms.
+
+\section{Task Definition}
+
+\subsection{Ordinal Grading}
+The task is formulated as \textbf{5-class ordinal classification} of fundus photographs into the international clinical DR severity scale:
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{ccl}
+\toprule
+Grade & Label & Clinical Description \\
+\midrule
+0 & No DR & No abnormalities \\
+1 & Mild NPDR & Microaneurysms only \\
+2 & Moderate NPDR & More than microaneurysms but less than severe \\
+3 & Severe NPDR & Extensive intraretinal hemorrhages \\
+4 & Proliferative DR & Neovascularization or vitreous hemorrhage \\
+\bottomrule
+\end{tabular}
+\caption{International clinical DR severity scale used as the ordinal target.}
+\end{table}
+
+The ordinal nature of the labels is exploited through the choice of loss function (see \S\ref{sec:loss}).
+
+\subsection{Out-of-Domain Evaluation Protocol}
+Each model is trained on a union of $N-1$ domains and evaluated on the held-out $N$-th domain. The training sources are pooled and class-balanced, then partitioned into a training set and a stratified validation set. The held-out domain contributes only to the test set. Reported metrics are computed exclusively on the held-out domain's test partition, which the model never observed in either training or model selection.
+
+This protocol is a deliberate subset of the larger GDRBench benchmark (Che et al., 2023), restricted to the four fundus domains used here. The choice of four domains is a practical throughput constraint, not a methodological one; the same analysis extends to the full eight-dataset pool as an explicit follow-up.
+
+The LODO protocol is \emph{strictly stronger} than the per-domain test protocol used by DRGen (Atwany \& Yaqub, 2022) and the single-pooled-split protocol used by El Bellaj et al. (2026), both of which allow training-time exposure to samples from the same population as the test set. Strict LODO is the only protocol that rules out in-distribution leakage into the test partition.
+
+\section{Data}
+
+\subsection{Sources}
+Four publicly available fundus photograph datasets are used as the source domains. They differ in:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{Acquisition device} (different camera manufacturers and models)
+  \item \textbf{Resolution} (ranging from approximately $640\times 480$ to over $3000\times 3000$ pixels)
+  \item \textbf{Patient population} (geographic, demographic, and referral-pattern heterogeneity)
+  \item \textbf{Native grading scheme} (two datasets use the 5-class scale directly; one uses a coarser scheme that is mapped to the 5-class scale; one uses a 6-class scheme that includes an ``ungradable'' category which is filtered out to maintain 5-class consistency)
+\end{itemize}
+
+The four-source pool is a strict subset of GDRBench's eight-source pool; the four sources used here are the ones with the largest public corpora and the clearest 5-class or 5-class-mappable grading scheme. The remaining four GDRBench sources are not used in this study; their inclusion is a follow-up.
+
+\subsection{Class Balancing}
+The four sources exhibit substantially different class distributions. A naive pool would be dominated by the source whose No-DR class is largest (typically an order of magnitude more samples than the rarest class), biasing the model toward the majority class and away from the minority classes that are clinically most important to detect.
+
+To control for this, training-pool class counts are \textbf{balanced to a 3:1 ratio} (most populous class subsampled to at most three times the rarest class), with downsampling only --- no upsampling, no synthetic augmentation beyond what is described in \S\ref{sec:augmentation}. The 3:1 ratio is chosen over a stricter 1:1 ratio to retain a usable training set size while still materially reducing majority-class dominance.
+
+The 3:1 ratio is itself a hyperparameter. The contribution of the balancing step is reported separately as an ablation (\S\ref{sec:abl-balancing}).
+
+\subsection{Grading-Scheme Reconciliation}
+Where the native grading scheme differs from the 5-class target, the following reconciliations are applied:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item Coarser schemes are mapped to the 5-class scale using the dataset's published correspondence table.
+  \item Finer schemes that include an ``ungradable'' label are processed by \emph{excluding} ungradable samples entirely. No image is relabeled to compensate; the ungradable class is treated as a quality-control filter rather than a sixth class.
+\end{itemize}
+
+After reconciliation, every image in the combined corpus carries a label in $\{0, 1, 2, 3, 4\}$.
+
+\subsection{Train / Validation / Test Split}
+For each LODO fold:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{Training set:} all sources except the held-out one, post-class-balancing, stratified by label.
+  \item \textbf{Validation set:} a stratified subsample (10\%) of the same pool, drawn from the same sources as training, used for model selection (early stopping, learning-rate scheduling, threshold tuning).
+  \item \textbf{Test set:} the held-out source's entire labeled set, with no subsampling.
+\end{itemize}
+
+The held-out source is never observed during training or model selection.
+
+\section{Model Architecture and Training}
+
+\subsection{Backbone}
+\label{sec:backbone}
+
+Three convolutional and transformer backbones are evaluated as the feature extractor in this study:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item ConvNeXt-Tiny (\textasciitilde{}28M parameters)
+  \item DeiT-3 Small (384-resolution variant, \textasciitilde{}22M parameters)
+  \item MaxViT Tiny (384-resolution variant, \textasciitilde{}31M parameters)
+\end{itemize}
+
+All backbones are initialized from publicly published ImageNet-pretrained weights and adapted to the 5-class ordinal target via a domain-specific head described in \S\ref{sec:head}.
+
+A convolutional block attention module (CBAM) is appended after the backbone feature map to recalibrate channel-wise and spatial feature responses. The number of CBAM stages is a hyperparameter; the default is two.
+
+The backbone family is a deliberate cross-style sweep --- one modern convolutional network (ConvNeXt), one pure vision transformer (DeiT-3), and one hybrid conv+attention network (MaxViT) --- chosen to test whether the per-threshold calibration findings of \S\ref{sec:per-threshold} are an architectural artifact or a property of the task. Expanding the backbone family to larger variants (ConvNeXt-Small, SwinV2-Base) is left as future work (see \S\ref{sec:future-work}).
+
+\subsection{Input Channels}
+\label{sec:input-channels}
+The model accepts $C$-channel inputs, where $C \in \{3, 4, 5\}$ depending on the variant:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{3-channel:} native RGB.
+  \item \textbf{4-channel:} RGB plus a single auxiliary channel. The auxiliary channel is one of:
+  \begin{itemize}
+    \item A lesion-segmentation soft mask (probability-valued output of a separately trained U-Net).
+    \item A Tversky-loss soft mask.
+    \item A morphologically processed soft mask (binary dilation + erosion).
+    \item A Sobel edge-gradient magnitude map (image-derived, no training required).
+  \end{itemize}
+  \item \textbf{5-channel:} RGB plus two auxiliary channels (a soft mask plus an edge map).
+\end{itemize}
+
+The auxiliary channels are pre-computed offline and stored alongside the preprocessed RGB images. They are loaded at training time and concatenated to the RGB channels at the dataset object level, before normalization.
+
+\textbf{Coverage requirement:} every auxiliary pool must provide an auxiliary file for every RGB image in all four source domains --- including the DDR test images. The DDR holdout fold requires its 2,990 test images to have soft-mask, Tversky-mask, morph-mask, and Sobel-edge auxiliary files. Coverage is verified explicitly before any 4-channel or 5-channel LODO fold is started; a missing file would render that fold unevaluable on the auxiliary-channel variants.
+
+\subsection{Ordinal Regression Head}
+\label{sec:head}
+The head treats the $K$-class ordinal problem as $K-1$ binary cumulative-threshold predictions: for each threshold $t \in \{1, \dots, K-1\}$, the head emits a probability that the true grade is at least $t$. The final predicted grade is derived from these cumulative probabilities either by argmax of the implied categorical distribution or by tuning the thresholds on the validation set.
+
+This formulation has two empirical motivations that are standard in the ordinal-regression literature: (i) it encodes the ordinal structure as an inductive bias rather than treating the labels as nominal, and (ii) it produces well-calibrated probabilities that enable downstream threshold tuning without retraining.
+
+The formulation used here is the \textbf{CORN} (COnditional ORdered Normalization) decomposition (Cao, Mirjalili \& Raschka, 2020), which defines the head as $K-1$ \emph{independent binary sub-problems}, one per ordinal threshold. The independence of the sub-problems is the structural property that the per-threshold calibration analysis (\S\ref{sec:per-threshold}) leverages.
+
+A dropout layer precedes the head. The head's hidden dimension is a hyperparameter; the default is 512.
+
+The decision to use CORN rather than the related CORAL ordinal head is deliberate: CORN's independent-binary decomposition admits a per-threshold calibration analysis that is not available under CORAL's rank-consistent joint-decoder formulation. The two are not interchangeable for the per-threshold calibration question this work asks.
+
+\subsection{Loss Function}
+\label{sec:loss}
+Two loss families are considered:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{CORN loss} (COnditional ORdered Normalization): a loss designed for the cumulative-threshold head formulation that respects the ordinal label structure and is empirically reported to outperform cross-entropy on ordinal tasks.
+  \item \textbf{Cross-entropy} as a baseline comparator.
+\end{itemize}
+
+When class counts are imbalanced, \textbf{class-weighted} variants are used, with weights proportional to the inverse class frequency in the training pool.
+
+\subsection{Two-Phase Training Schedule}
+Training proceeds in two phases:
+
+\textbf{Phase 1 --- Frozen backbone.} The backbone weights are frozen and only the head, the CBAM module, and the input-channel adapter (for $C > 3$) are trained. This stabilizes the head before the backbone is allowed to drift and yields a useful validation signal for early hyperparameter rejection. Phase 1 runs for a small number of epochs (default 5) with a high head learning rate (default $10^{-3}$) and a short warmup.
+
+\textbf{Phase 2 --- Full fine-tuning.} The backbone is unfrozen and the full model is trained end-to-end. Phase 2 runs for a longer horizon (default 20 epochs) with a substantially smaller learning rate (default $1.2 \times 10^{-4}$ for the head, $1.2 \times 10^{-5}$ for the backbone), a cosine schedule, and a minimum-epoch floor (default 8) before early stopping is permitted. Overfitting is monitored by a patience-based early-stopping rule (default patience 5) on validation Quadratic Weighted Kappa (QWK).
+
+Batch size, learning rates, weight decay, warmup epochs, and augmentation strength are backbone-dependent hyperparameters reflecting the differing memory footprints and learning-rate sensitivities of the candidate architectures.
+
+\subsection{Regularization}
+\label{sec:augmentation}
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{Exponential Moving Average (EMA):} an EMA copy of the model parameters is maintained with decay factor 0.999 and used for evaluation. This is a standard regularizer that improves test-time stability at negligible cost.
+  \item \textbf{MixUp:} with a configurable probability, pairs of training samples and their labels are linearly interpolated. MixUp is applied at the input level (and propagated to the auxiliary channels) and is disabled in the last portion of training to avoid corrupting late-stage fine-tuning.
+  \item \textbf{Augmentation:} geometric and photometric augmentations are applied at training time. The augmentation strength is a hyperparameter (default ``light'') that controls the magnitudes.
+  \item \textbf{Sqrt sampling:} optionally, a per-class sampling probability proportional to $1/\sqrt{n_c}$ (rather than $1/n_c$) is used to balance class exposure during training. This is gentler than uniform class-balanced sampling and is the default in Phase 2.
+\end{itemize}
+
+\subsection{Model Selection}
+The best checkpoint per fold is selected by \emph{validation QWK}, not by validation accuracy. QWK is the standard metric for ordered clinical grading and is more sensitive to clinically meaningful errors than accuracy or macro-F1.
+
+\section{Evaluation Metrics}
+
+\subsection{Primary Metric}
+The primary metric is \textbf{Quadratic Weighted Kappa (QWK)} on the held-out domain's test set, computed with the clinically standard integer-grading prediction. QWK is reported with confidence intervals obtained via bootstrap over the test set.
+
+\subsection{Secondary Metrics}
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{Accuracy} (argmax predicted grade).
+  \item \textbf{Macro precision, recall, F1} (unweighted mean across the 5 classes).
+  \item \textbf{Per-class F1} (one row per clinical grade).
+  \item \textbf{Macro AUC-ROC} (one-vs-rest, averaged across classes).
+  \item \textbf{Confusion matrix} at the integer-grading prediction.
+\end{itemize}
+
+\subsection{Per-Threshold Calibration (Core Diagnostic)}
+\label{sec:per-threshold}
+This is the central contribution of the work. The CORN head produces $K-1 = 4$ independent probability outputs, one per ordinal threshold $t \in \{1, 2, 3, 4\}$. Each of these outputs is a prediction of the binary event ``true grade $\geq t$.'' The calibration of each threshold is a separate question. The diagnostic procedure is:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item For each threshold $t$, compute the \textbf{Expected Calibration Error (ECE)} of the binary ``grade $\geq t$'' prediction on the held-out domain's test set, with 10 equal-mass (quantile) bins. Equal-mass binning is used because per-fold sample sizes are highly imbalanced (EyePACS $n_{\mathrm{test}} = 88{,}702$ vs Messidor-2 $n_{\mathrm{test}} = 1{,}744$); equal-width binning leaves most bins empty on the smaller folds and equal-mass binning keeps each bin informative. This is the per-threshold ECE.
+  \item Fit \textbf{temperature scaling} on the validation set, separately per threshold, and re-evaluate ECE on the test set. Compare per-threshold ECE before and after temperature scaling.
+  \item For comparison, also fit a \emph{single global temperature scaling} parameter across all four thresholds and compare.
+  \item Report the per-threshold ECE in tabular form (one row per threshold, one column per LODO fold) and characterize whether the per-threshold calibration errors diverge across folds as a function of the per-threshold class distribution in the held-out source.
+\end{itemize}
+
+The aggregate ECE on the categorical prediction is reported only as a summary, not as the primary metric. The per-threshold ECE is the unit of analysis.
+
+The distinction between \emph{per-threshold calibration} and \emph{ordinal threshold tuning} is deliberate and important. The latter (e.g., as in ORDER-DR, 2026) places decision boundaries to maximize QWK on the expected-grade score; it does not measure whether the predicted probabilities at each threshold are themselves trustworthy. The two procedures are complementary and answer different questions.
+
+The per-threshold temperature scaling analysis is explicitly motivated by the Poyrazer et al. (2026) finding that global temperature scaling fails under DR cross-dataset shift. The question is whether \emph{per-threshold} temperature scaling recovers what the global procedure loses, and whether the recovery is uniform across thresholds or worse at the Mild (grade 1) threshold specifically.
+
+\textbf{Status of the calibration diagnostic.} The per-threshold calibration analysis is complete on all four 3-channel ConvNeXt-Tiny checkpoints (one per LODO fold). The per-threshold ECE, per-threshold temperature-scaling ECE, single-global-temperature-scaling ECE, and per-fold delta tables are populated in §3 of the results summary. The headline empirical finding is that both per-threshold and single-global temperature scaling \emph{increase} ECE on the held-out test set (mean $\Delta$ECE $\approx +0.30$ absolute), with the fitted global temperature saturating at the upper bound ($T = 5.0$) on every fold --- an independent confirmation of the prior-literature finding that post-hoc temperature scaling fails under DR cross-dataset shift. The reliability diagrams (16 bins $\times$ 4 thresholds $\times$ 4 folds = 256 bin rows) are embedded as figures in §3.5 of the results summary (Figures~\ref{fig:reliability-eyepacs}---\ref{fig:reliability-ddr} of the analysis writeup) and show systematic underconfidence on every fold and threshold.
+
+\subsection{Statistical Significance}
+\label{sec:statistical-significance}
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{Per-fold QWK differences} between variants will be reported with a paired bootstrap test on the held-out domain's test set (1000 resamples). Bootstrap confidence intervals are not yet populated; the procedure is defined and the bootstrap runner is in place. The point estimates in the results table are reported as raw values.
+  \item \textbf{Across-fold QWK differences} are reported as mean $\pm$ standard deviation across the $N$ folds.
+  \item \textbf{Per-fold per-threshold ECE differences} will be reported with a paired bootstrap test on the held-out domain's test set (1000 resamples) per threshold, once the per-threshold calibration tables are populated.
+  \item A pre-registered significance threshold is applied uniformly and is not adjusted post-hoc.
+\end{itemize}
+
+\textbf{Status of bootstrap confidence intervals.} None of the per-fold QWK, accuracy, F1, AUC, or ECE numbers in the analysis writeup yet carry a paired-bootstrap 95\% confidence interval. The bootstrap procedure is defined above; the eval runner does not currently persist per-sample predictions to the JSONL output, so the implementation requires extending the evaluation runner to dump per-sample (true\_label, predicted\_label, predicted\_prob) tuples. No model retraining is required --- the existing \texttt{*\_best.pt} checkpoints suffice. The reported values are raw point estimates.
+
+\section{Lesion-Segmentation Auxiliary Model}
+The soft-mask auxiliary channel used by the 4-channel and 5-channel variants is produced by a separately trained segmentation model:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{Architecture:} U-Net with an EfficientNet-B4 encoder. The encoder is initialized from ImageNet-pretrained weights and adapted to single-channel output. B4 is chosen over B0 for the larger receptive field and richer feature capacity.
+  \item \textbf{Training data (primary):} DDR lesion segmentation subset (383 training + 149 validation + 225 test images with pixel-level ground truth for microaneurysms, hemorrhages, hard exudates, and soft exudates). The four per-lesion masks are unioned into a single binary ``any-lesion'' mask for training and evaluation.
+  \item \textbf{Training data (auxiliary, optional):} IDRiD lesion-segmentation subset (54 training + 27 test images). IDRiD is held out of the training pool by default and used only as the cross-domain evaluation set.
+  \item \textbf{Loss family:} either binary cross-entropy plus Dice or Tversky loss (the latter is more robust to class imbalance on small lesions). Both are trained and reported separately.
+  \item \textbf{Output:} a single-channel probability-valued soft mask, thresholded post-training only for visualization, not for use as the auxiliary channel.
+\end{itemize}
+
+\textbf{The segmentation model is trained once per loss family and reused across all four DR-grading source domains} (eyepacs, aptos, messidor2, ddr). At inference time, the trained U-Net is applied to every image in the four DR-grading source corpora to produce soft masks that are stored as auxiliary files matching the RGB image basenames.
+
+\subsection{Edge-Gradient Auxiliary Channel}
+The Sobel edge-gradient magnitude is computed directly from the grayscale image at preprocessing time using a fixed $3\times 3$ Sobel kernel. No learned parameters are involved. It is the cheapest auxiliary channel and serves as a control for the more expensive learned segmentation mask.
+
+\section{Experimental Design}
+
+\subsection{Comparisons}
+The following variants are compared in this study:
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lcl}
+\toprule
+Variant & Channels & Purpose \\
+\midrule
+Baseline (3-channel) & 3 & Reference performance \\
+4-channel soft mask & 4 & Does learned segmentation help? \\
+4-channel Tversky & 4 & Does loss choice at the segmentation stage matter? \\
+4-channel morphological & 4 & Does post-processing of the soft mask help? \\
+\bottomrule
+\end{tabular}
+\caption{Experimental variants compared in this work.}
+\end{table}
+
+The 3-channel row is the primary arm of the work. The 4-channel rows are methodological supplements motivated by the prior literature on multi-channel lesion-aware DR grading; the calibration analysis is reported on the 3-channel row. The 4-channel Sobel variant, the 5-channel (soft + Sobel) variant, and the 5-channel (Tversky + Sobel) variant were not run in this study and are deferred to future work (see \S\ref{sec:future-work}).
+
+\subsection{LODO Folds}
+Four LODO folds are run, one per held-out source. Each cell of the (variant $\times$ fold) matrix is a single training run.
+
+\subsection{Backbone Comparison}
+For the 3-channel baseline, the three backbones listed in \S\ref{sec:backbone} (ConvNeXt-Tiny, DeiT-3 Small/384, MaxViT-Tiny/384) are compared to characterize the architectural effect on cross-domain generalization, independent of the auxiliary-channel question. The results are reported in the analysis writeup \S2.1.
+
+\subsection{Ablation on Class Balancing}
+\label{sec:abl-balancing}
+The 3-channel baseline is run with and without the 3:1 class balancing to characterize the contribution of the balancing step alone. At the time of writing, the balanced baseline is complete for all three backbones across all four LODO folds; the unbalanced baseline is complete for all 4 ConvNeXt-Tiny folds (EyePACS 0.4491, APTOS 0.8607, Messidor-2 0.7661, DDR 0.7759). The \S6 ablation table in the analysis writeup shows that the unbalanced baseline is uniformly +2.09\% to +5.67\% better than the balanced baseline (cross-fold mean $\Delta$QWK = +3.93\% in favour of unbalanced), the dominant single ablation effect in this study. The per-class F1 breakdown is a follow-up.
+
+\subsection{Reproducibility}
+A single seed is used for every run reported in this study. Seed sensitivity is not characterized and is left as future work (see \S\ref{sec:future-work}).
+
+\section{Related Work Positioning}
+The work positions itself relative to four lines of recent literature:
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{GDRNet / GDRBench (Che et al., 2023) and DRGen (Atwany \& Yaqub, 2022):} establish that LODO-style cross-domain evaluation is a meaningful and populated line of work on this dataset pool. The present work uses LODO as a strict evaluation protocol but does not propose a new method to close the cross-domain accuracy gap.
+  \item \textbf{DECO (Xia et al., 2024):} representation-disentanglement approach to closing the cross-domain gap, benchmarked on GDRBench.
+  \item \textbf{El Bellaj et al. (2026):} the closest prior work. Uses an evidential ordinal regression head with a single pooled train/val/test split and reports one aggregate uncertainty number. The present work differs in (a) using strict LODO rather than pooled split, (b) using CORN's independent-binary decomposition rather than a joint Dirichlet distribution, and (c) reporting calibration decomposed per threshold rather than as a single aggregate.
+  \item \textbf{ORDER-DR (Sheng et al., 2026):} reports a single scalar ECE on a binarized referable-DR endpoint that nearly quadruples from in-distribution to external validation (0.049 $\to$ 0.160), providing independent confirmation that calibration degrades under cross-dataset shift in DR grading. Their ``ordinal thresholds'' are decision-boundary placements on the expected-grade score, not probability-calibration procedures at the per-threshold binary level. The present work cites ORDER-DR as motivation for the per-threshold calibration question rather than as a methodological competitor.
+  \item \textbf{Poyrazer, Yağcı \& Erten (2026):} independently demonstrates that global temperature scaling fails under DR cross-dataset shift (development ECE $\leq 0.022$, external ECE 0.086--0.149 after re-scaling) and independently reproduces the Mild-grade catastrophic failure under shift (F1 = 0.000 for two of three encoders). Used as convergent evidence that aggregate calibration tools are inadequate under shift and that the Mild threshold is a prior target for finer-grained diagnosis.
+\end{itemize}
+
+\section{Threats to Validity}
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{Source coverage:} only four publicly available sources are used. Generalization to sources not represented in this set is not claimed.
+  \item \textbf{Image resolution:} the preprocessing pipeline resizes all images to a uniform resolution. Resolution-induced information loss is not separately characterized.
+  \item \textbf{Grading-scheme reconciliation:} the mapping from the 6-class scheme to the 5-class scheme is a published correspondence. Different mappings would yield different results.
+  \item \textbf{Single seed:} the default protocol uses a single seed. Seed sensitivity is not characterized; see \S\ref{sec:future-work}.
+  \item \textbf{Threshold tuning:} the cumulative-threshold thresholds are tuned on the validation set. Threshold quality depends on validation-set size, which is small for some folds.
+  \item \textbf{Calibration reporting:} the per-threshold calibration analysis is complete on the 3-channel ConvNeXt-Tiny baseline across all four LODO folds. The auxiliary-channel variants are not separately calibrated at the per-threshold level; doing so is a follow-up.
+  \item \textbf{Backbone coverage:} the architecture comparison is across three backbones (ConvNeXt-Tiny, DeiT-3 Small/384, MaxViT-Tiny/384). Larger variants (ConvNeXt-Small, SwinV2-Base) are not evaluated; see \S\ref{sec:future-work}.
+  \item \textbf{Auxiliary-channel coverage:} the segmentation auxiliary ablation covers three of the four defined 4-channel variants (soft, Tversky, morphological) and none of the 5-channel variants; see \S\ref{sec:future-work}.
+\end{itemize}
+
+\section{Ethics and Data Use}
+All four source datasets are publicly available for research use under their respective licenses. No patient-identifying information is included in the released data. The work does not constitute a clinical-grade diagnostic system and is not intended for clinical deployment without further validation.
+
+\section{Future Work}
+\label{sec:future-work}
+The following items are defined in the methodology above but are not executed in this study. Each is a concrete follow-up with a known compute budget and known implementation surface; none requires methodological design work.
+
+\begin{itemize}[leftmargin=*, topsep=0pt]
+  \item \textbf{Full backbone family.} Expand the architecture comparison to include ConvNeXt-Small (\textasciitilde{}50M parameters) and SwinV2-Base (192$\to$384 transfer, \textasciitilde{}88M parameters). The runner, the loss function, and the LODO split are all in place; only the model yaml at \texttt{configs/models/} and the per-arch hyperparameter override (SwinV2's batch size 12, DeiT-3's $5 \times 10^{-5}$ learning rate) need to be configured. Estimated compute: \textasciitilde{}5--8 hours of training across 8 folds (2 backbones $\times$ 4 LODO folds).
+  \item \textbf{Complete the auxiliary-channel ablation matrix.} Run the 4-channel Sobel and both 5-channel variants (soft + Sobel, Tversky + Sobel) on the ConvNeXt-Tiny backbone across all four LODO folds. The Sobel auxiliary pool is already pre-computed at preprocessing time and stored on disk alongside the RGB images; the 5-channel variants require a single training-time concatenation change. Estimated compute: \textasciitilde{}12--14 runs $\times$ \textasciitilde{}25 min/run on ConvNeXt-Tiny = \textasciitilde{}5--6 hours.
+  \item \textbf{Bootstrap confidence intervals for all reported metrics.} Compute paired-bootstrap 95\% confidence intervals (1000 resamples) on the held-out test set for every QWK, accuracy, F1, AUC, and per-threshold ECE reported in the analysis writeup. The procedure is defined in \S\ref{sec:statistical-significance}; the eval runner does not currently persist per-sample logits, so the implementation requires either a re-run of the eval pipeline with logits dumped, or an extension of the JSONL output schema. Estimated compute: \textasciitilde{}60--90 minutes on the four ConvNeXt-Tiny checkpoints plus the ablation matrix \emph{after} the eval-pipeline change.
+  \item \textbf{Seed sensitivity for the high-priority variants.} Repeat the 3-channel baseline (\textit{ConvNeXt-Tiny only}) and the 4-channel soft-mask variant across a small pre-registered seed set (e.g., 3 seeds per fold). The seed set is to be pre-registered before any seed-sensitivity run is started. Estimated compute: 4 folds $\times$ 2 variants $\times$ 2 additional seeds = 16 runs at \textasciitilde{}25 min each $\approx$ \textasciitilde{}7 hours.
+  \item \textbf{Extend the source pool to the remaining four GDRBench sources.} The four sources used here (EyePACS, APTOS, Messidor-2, DDR) are a strict subset of GDRBench's eight. The remaining four add cases for different acquisition protocols, different patient populations, and a different reference-grading scheme. The same pipeline applies without modification; the work is in the data acquisition and grading-scheme reconciliation, not in the modeling.
+  \item \textbf{Per-threshold calibration of the auxiliary-channel variants.} The per-threshold calibration analysis is run on the 3-channel baseline only in this study. Re-running on the 4-channel soft, Tversky, and morphological variants would test whether the auxiliary-channel question (does the segmentation mask help?) and the per-threshold calibration question (does the per-threshold ECE diverge under shift?) interact. This is a follow-up to the calibration diagnostic.
+  \item \textbf{Investigate the temperature-saturation pathology.} The fitted global temperature saturates at the upper bound ($T = 5.0$) on every fold, suggesting the optimizer is being aggressively pushed to extreme softening that does not transfer. Understanding why this happens --- whether due to the validation-set sample size, the loss surface, or a bug in the temperature-scaling procedure --- is a diagnostic follow-up before drawing strong conclusions about the post-hoc calibration failure mode.
+\end{itemize}
+
+\section{Source Coverage}
+The four publicly available sources are: EyePACS ($n_{\mathrm{test}} = 88{,}702$), APTOS ($n_{\mathrm{test}} = 3{,}662$), Messidor-2 ($n_{\mathrm{test}} = 1{,}744$), DDR ($n_{\mathrm{test}} = 12{,}522$). The four sources differ in acquisition device, resolution, patient population, and native grading scheme as described in §3. The remaining four GDRBench sources are not used in this study; their inclusion is listed under \S\ref{sec:future-work}.
+
+\end{document}
