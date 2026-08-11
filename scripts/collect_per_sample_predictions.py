@@ -171,6 +171,7 @@ def collect_one(variant: str, fold: str, cp: str, manifest: str, seg_dir: str | 
         "pred_labels": pred_labels.astype(int).tolist(),
         "per_threshold_probs": probs.tolist(),  # [N, 4]
         "class_probs": class_probs.tolist(),     # [N, 5]
+        "logits": logits.tolist(),              # [N, 4] raw CORN logits (for calibration)
     }
 
 

@@ -1,0 +1,402 @@
+[
+  {
+    "variant": "3ch_balanced",
+    "fold": "eyepacs",
+    "n_samples": 88702,
+    "raw_ece_mean": 0.2710493166461669,
+    "raw_ece_std": 0.00028719322841191377,
+    "per_thresh_ece_mean": 0.22739096916472978,
+    "per_thresh_ece_std": 0.00017717116441392554,
+    "glob_t_ece_mean": 0.3237480295266698,
+    "glob_t_ece_std": 0.00035254806905949873,
+    "delta_ece_per_thresh_mean": -0.0436583474814371,
+    "delta_ece_glob_mean": 0.05269871288050293,
+    "per_thresh_temperatures_mean": [
+      4.085473070643353,
+      0.7853519310990028,
+      0.4383132403262019,
+      0.9111800446156852
+    ],
+    "global_temperatures_mean": 2.455173707827254
+  },
+  {
+    "variant": "3ch_balanced",
+    "fold": "aptos",
+    "n_samples": 3662,
+    "raw_ece_mean": 0.21720017993952304,
+    "raw_ece_std": 0.0012975515036401887,
+    "per_thresh_ece_mean": 0.22430227592480206,
+    "per_thresh_ece_std": 0.0006271932960732859,
+    "glob_t_ece_mean": 0.33293845173721487,
+    "glob_t_ece_std": 0.0010536566340423196,
+    "delta_ece_per_thresh_mean": 0.007102095985279028,
+    "delta_ece_glob_mean": 0.11573827179769183,
+    "per_thresh_temperatures_mean": [
+      0.5943078589051609,
+      1.9282695193539852,
+      1.759741494712788,
+      1.0954116357092691
+    ],
+    "global_temperatures_mean": 4.999947089035333
+  },
+  {
+    "variant": "3ch_balanced",
+    "fold": "messidor2",
+    "n_samples": 1744,
+    "raw_ece_mean": 0.1509213310746193,
+    "raw_ece_std": 0.0015208048128879455,
+    "per_thresh_ece_mean": 0.12387864976541159,
+    "per_thresh_ece_std": 0.0012187464434924927,
+    "glob_t_ece_mean": 0.30662100141851306,
+    "glob_t_ece_std": 0.0034478644655439473,
+    "delta_ece_per_thresh_mean": -0.027042681309207714,
+    "delta_ece_glob_mean": 0.15569967034389376,
+    "per_thresh_temperatures_mean": [
+      1.16586456951805,
+      0.6362546754440775,
+      0.4565702241624331,
+      1.509270851638396
+    ],
+    "global_temperatures_mean": 4.004628532593264
+  },
+  {
+    "variant": "3ch_balanced",
+    "fold": "ddr",
+    "n_samples": 12522,
+    "raw_ece_mean": 0.13115465662083234,
+    "raw_ece_std": 0.0014674411297465138,
+    "per_thresh_ece_mean": 0.11688239689041766,
+    "per_thresh_ece_std": 0.00105688986641618,
+    "glob_t_ece_mean": 0.30750028353177494,
+    "glob_t_ece_std": 0.000898386803472394,
+    "delta_ece_per_thresh_mean": -0.014272259730414683,
+    "delta_ece_glob_mean": 0.1763456269109426,
+    "per_thresh_temperatures_mean": [
+      0.7230398832215024,
+      0.9299804777805167,
+      0.8864244343273416,
+      0.879803324424237
+    ],
+    "global_temperatures_mean": 4.999940810849173
+  },
+  {
+    "variant": "3ch_unbalanced",
+    "fold": "eyepacs",
+    "n_samples": 88702,
+    "raw_ece_mean": 0.26075525577670317,
+    "raw_ece_std": 0.0002208072686754286,
+    "per_thresh_ece_mean": 0.27439537684028315,
+    "per_thresh_ece_std": 0.00010216531918907607,
+    "glob_t_ece_mean": 0.3324674501498985,
+    "glob_t_ece_std": 0.0002286322087446374,
+    "delta_ece_per_thresh_mean": 0.01364012106357998,
+    "delta_ece_glob_mean": 0.07171219437319531,
+    "per_thresh_temperatures_mean": [
+      3.2490940780749327,
+      2.6525888084900164,
+      1.2366574010472655,
+      3.66085386840574
+    ],
+    "global_temperatures_mean": 4.99995035950513
+  },
+  {
+    "variant": "3ch_unbalanced",
+    "fold": "aptos",
+    "n_samples": 3662,
+    "raw_ece_mean": 0.1845988267664954,
+    "raw_ece_std": 0.001459132181392085,
+    "per_thresh_ece_mean": 0.1876717675271074,
+    "per_thresh_ece_std": 0.002348806297985615,
+    "glob_t_ece_mean": 0.3166114004243192,
+    "glob_t_ece_std": 0.0003848602939700805,
+    "delta_ece_per_thresh_mean": 0.003072940760612014,
+    "delta_ece_glob_mean": 0.1320125736578238,
+    "per_thresh_temperatures_mean": [
+      0.3717113590380217,
+      2.1120929149922056,
+      1.578947140722756,
+      1.6018294763910383
+    ],
+    "global_temperatures_mean": 4.999945503126909
+  },
+  {
+    "variant": "3ch_unbalanced",
+    "fold": "messidor2",
+    "n_samples": 1744,
+    "raw_ece_mean": 0.28907993927806264,
+    "raw_ece_std": 0.0014942241762301175,
+    "per_thresh_ece_mean": 0.2377624966539663,
+    "per_thresh_ece_std": 0.0019147520972364516,
+    "glob_t_ece_mean": 0.3432739358186253,
+    "glob_t_ece_std": 0.0023849341037111512,
+    "delta_ece_per_thresh_mean": -0.05131744262409635,
+    "delta_ece_glob_mean": 0.05419399654056267,
+    "per_thresh_temperatures_mean": [
+      0.8495511156240395,
+      4.999945350404305,
+      1.0968405827556864,
+      4.999952233813666
+    ],
+    "global_temperatures_mean": 4.99993483278809
+  },
+  {
+    "variant": "3ch_unbalanced",
+    "fold": "ddr",
+    "n_samples": 12522,
+    "raw_ece_mean": 0.14175563601726818,
+    "raw_ece_std": 0.0008094999840585134,
+    "per_thresh_ece_mean": 0.14173074764038568,
+    "per_thresh_ece_std": 0.0012888565773916984,
+    "glob_t_ece_mean": 0.30548043902271094,
+    "glob_t_ece_std": 0.0012199851186524176,
+    "delta_ece_per_thresh_mean": -2.488837688249812e-05,
+    "delta_ece_glob_mean": 0.16372480300544276,
+    "per_thresh_temperatures_mean": [
+      0.6610053103288884,
+      0.8914004557642962,
+      1.1329269352459432,
+      1.5104334509198138
+    ],
+    "global_temperatures_mean": 4.999941428959406
+  },
+  {
+    "variant": "4ch_soft",
+    "fold": "eyepacs",
+    "n_samples": 88702,
+    "raw_ece_mean": 0.17768245434340246,
+    "raw_ece_std": 0.0005604144650762575,
+    "per_thresh_ece_mean": 0.17029971853187148,
+    "per_thresh_ece_std": 0.00035055859810640474,
+    "glob_t_ece_mean": 0.26776548999505934,
+    "glob_t_ece_std": 0.00053269215669952,
+    "delta_ece_per_thresh_mean": -0.007382735811530983,
+    "delta_ece_glob_mean": 0.09008303565165687,
+    "per_thresh_temperatures_mean": [
+      2.706789198314778,
+      0.9132766970108195,
+      0.6300812726671179,
+      1.6431835936812202
+    ],
+    "global_temperatures_mean": 2.4727218512120097
+  },
+  {
+    "variant": "4ch_soft",
+    "fold": "aptos",
+    "n_samples": 3662,
+    "raw_ece_mean": 0.22470931508181619,
+    "raw_ece_std": 0.0009202863838695851,
+    "per_thresh_ece_mean": 0.21581452915402935,
+    "per_thresh_ece_std": 0.000692792798126183,
+    "glob_t_ece_mean": 0.3525180886024544,
+    "glob_t_ece_std": 0.0006678865107269264,
+    "delta_ece_per_thresh_mean": -0.008894785927786836,
+    "delta_ece_glob_mean": 0.12780877352063824,
+    "per_thresh_temperatures_mean": [
+      0.38076535298410985,
+      1.0937796402625048,
+      1.0678877492613164,
+      1.0855612822448817
+    ],
+    "global_temperatures_mean": 4.999947375583828
+  },
+  {
+    "variant": "4ch_soft",
+    "fold": "messidor2",
+    "n_samples": 1744,
+    "raw_ece_mean": 0.18827051197809147,
+    "raw_ece_std": 0.0024424172221818963,
+    "per_thresh_ece_mean": 0.14786710509435774,
+    "per_thresh_ece_std": 0.002818968592467423,
+    "glob_t_ece_mean": 0.30625334842007307,
+    "glob_t_ece_std": 0.0057659491222867,
+    "delta_ece_per_thresh_mean": -0.04040340688373373,
+    "delta_ece_glob_mean": 0.1179828364419816,
+    "per_thresh_temperatures_mean": [
+      1.249257426772444,
+      0.44854443827454843,
+      0.4794413496189203,
+      1.2623410694265123
+    ],
+    "global_temperatures_mean": 3.4603370787950007
+  },
+  {
+    "variant": "4ch_soft",
+    "fold": "ddr",
+    "n_samples": 12522,
+    "raw_ece_mean": 0.19357711091999877,
+    "raw_ece_std": 0.0008761817727398516,
+    "per_thresh_ece_mean": 0.18326191799119212,
+    "per_thresh_ece_std": 0.0009634544775783182,
+    "glob_t_ece_mean": 0.3274117766990342,
+    "glob_t_ece_std": 0.0005234147212125214,
+    "delta_ece_per_thresh_mean": -0.010315192928806644,
+    "delta_ece_glob_mean": 0.13383466577903544,
+    "per_thresh_temperatures_mean": [
+      0.6913152826891963,
+      0.7745562911184041,
+      0.9857581073393475,
+      4.80068977520032
+    ],
+    "global_temperatures_mean": 4.999945319114523
+  },
+  {
+    "variant": "4ch_tversky",
+    "fold": "eyepacs",
+    "n_samples": 88702,
+    "raw_ece_mean": 0.3033903559706648,
+    "raw_ece_std": 0.0002652624147067345,
+    "per_thresh_ece_mean": 0.2617516701302173,
+    "per_thresh_ece_std": 0.000291171841889313,
+    "glob_t_ece_mean": 0.3475159541978071,
+    "glob_t_ece_std": 0.0002280058343822748,
+    "delta_ece_per_thresh_mean": -0.041638685840447553,
+    "delta_ece_glob_mean": 0.04412559822714229,
+    "per_thresh_temperatures_mean": [
+      4.999959468128521,
+      0.8943970029603759,
+      1.0774292649869506,
+      0.5228235306193196
+    ],
+    "global_temperatures_mean": 3.5444495352008274
+  },
+  {
+    "variant": "4ch_tversky",
+    "fold": "aptos",
+    "n_samples": 3662,
+    "raw_ece_mean": 0.18703324774482438,
+    "raw_ece_std": 0.0006431621063203824,
+    "per_thresh_ece_mean": 0.19426874064786334,
+    "per_thresh_ece_std": 0.0005995654295695105,
+    "glob_t_ece_mean": 0.31069799608846965,
+    "glob_t_ece_std": 0.0011802917123532098,
+    "delta_ece_per_thresh_mean": 0.007235492903038959,
+    "delta_ece_glob_mean": 0.12366474834364527,
+    "per_thresh_temperatures_mean": [
+      0.7049991266522722,
+      2.313450932992337,
+      2.0401158475920913,
+      1.3442026498937125
+    ],
+    "global_temperatures_mean": 4.999944587097282
+  },
+  {
+    "variant": "4ch_tversky",
+    "fold": "messidor2",
+    "n_samples": 1744,
+    "raw_ece_mean": 0.15912824361681094,
+    "raw_ece_std": 0.0005845118990315619,
+    "per_thresh_ece_mean": 0.14422631403874683,
+    "per_thresh_ece_std": 0.0016614839794914147,
+    "glob_t_ece_mean": 0.30094234372188805,
+    "glob_t_ece_std": 0.0016181334986623034,
+    "delta_ece_per_thresh_mean": -0.014901929578064105,
+    "delta_ece_glob_mean": 0.1418141001050771,
+    "per_thresh_temperatures_mean": [
+      1.2544190864232962,
+      0.6478280298498839,
+      0.6383658277747963,
+      3.515872309102657
+    ],
+    "global_temperatures_mean": 4.0241000006186605
+  },
+  {
+    "variant": "4ch_tversky",
+    "fold": "ddr",
+    "n_samples": 12522,
+    "raw_ece_mean": 0.11926371667843005,
+    "raw_ece_std": 0.002138268860108165,
+    "per_thresh_ece_mean": 0.1284928285290641,
+    "per_thresh_ece_std": 0.0006796889357885035,
+    "glob_t_ece_mean": 0.29583532701568055,
+    "glob_t_ece_std": 0.0008129368487462285,
+    "delta_ece_per_thresh_mean": 0.009229111850634047,
+    "delta_ece_glob_mean": 0.1765716103372505,
+    "per_thresh_temperatures_mean": [
+      0.8492642401327204,
+      0.8965636059804603,
+      1.2162423122510497,
+      1.6910340232972003
+    ],
+    "global_temperatures_mean": 4.999939533661369
+  },
+  {
+    "variant": "4ch_morph",
+    "fold": "eyepacs",
+    "n_samples": 88702,
+    "raw_ece_mean": 0.38518110849013454,
+    "raw_ece_std": 0.0005921176930693154,
+    "per_thresh_ece_mean": 0.2602898925665976,
+    "per_thresh_ece_std": 0.00015442084893099546,
+    "glob_t_ece_mean": 0.3815473025445705,
+    "glob_t_ece_std": 0.00023847709762490503,
+    "delta_ece_per_thresh_mean": -0.12489121592353691,
+    "delta_ece_glob_mean": -0.0036338059455640614,
+    "per_thresh_temperatures_mean": [
+      4.99993957308249,
+      0.6940638187554631,
+      0.3623182504706928,
+      4.999958037888384
+    ],
+    "global_temperatures_mean": 4.9999405683170774
+  },
+  {
+    "variant": "4ch_morph",
+    "fold": "aptos",
+    "n_samples": 3662,
+    "raw_ece_mean": 0.22915789574654358,
+    "raw_ece_std": 0.00170831202603687,
+    "per_thresh_ece_mean": 0.22637745850391733,
+    "per_thresh_ece_std": 0.0010748285989521408,
+    "glob_t_ece_mean": 0.34507378877646067,
+    "glob_t_ece_std": 0.001052902030602212,
+    "delta_ece_per_thresh_mean": -0.002780437242626249,
+    "delta_ece_glob_mean": 0.11591589302991709,
+    "per_thresh_temperatures_mean": [
+      0.39349357011534153,
+      1.5218177960445058,
+      1.3326696185616258,
+      2.025200199354965
+    ],
+    "global_temperatures_mean": 4.999945494408222
+  },
+  {
+    "variant": "4ch_morph",
+    "fold": "messidor2",
+    "n_samples": 1744,
+    "raw_ece_mean": 0.18089691206283726,
+    "raw_ece_std": 0.003429894135718009,
+    "per_thresh_ece_mean": 0.14944719417676416,
+    "per_thresh_ece_std": 0.002904872312655533,
+    "glob_t_ece_mean": 0.31268797851393,
+    "glob_t_ece_std": 0.003971712038694595,
+    "delta_ece_per_thresh_mean": -0.03144971788607309,
+    "delta_ece_glob_mean": 0.13179106645109273,
+    "per_thresh_temperatures_mean": [
+      0.8083074766281886,
+      0.6512097499952624,
+      0.38578122589620656,
+      4.093960380411761
+    ],
+    "global_temperatures_mean": 4.10406387625044
+  },
+  {
+    "variant": "4ch_morph",
+    "fold": "ddr",
+    "n_samples": 12522,
+    "raw_ece_mean": 0.15580519226948936,
+    "raw_ece_std": 0.0009306438465914634,
+    "per_thresh_ece_mean": 0.15466119051018562,
+    "per_thresh_ece_std": 0.0005742659012649477,
+    "glob_t_ece_mean": 0.3104713157577533,
+    "glob_t_ece_std": 0.0006820465166230522,
+    "delta_ece_per_thresh_mean": -0.0011440017593037366,
+    "delta_ece_glob_mean": 0.15466612348826392,
+    "per_thresh_temperatures_mean": [
+      0.696925087909679,
+      0.9127956302976715,
+      1.1062391026072471,
+      3.4602274006744467
+    ],
+    "global_temperatures_mean": 4.999941873738655
+  }
+]
