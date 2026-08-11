@@ -54,6 +54,25 @@ def evaluate_checkpoint(
     model, config = load_model_from_checkpoint(checkpoint_path, device, use_ema=use_ema)
     arch = config.get("model", {}).get("arch", "unknown")
     img_size = img_size or config.get("model", {}).get("img_size")
+    in_chans = config.get("model", {}).get("in_chans", 3)
+
+    # Auto-derive seg_dir from the saved config for >3-channel models so
+    # callers don't have to remember to pass it. Explicit --seg-dir wins.
+    if seg_dir is None and in_chans > 3:
+        phases = config.get("phases", {}) or {}
+        seg_dirs: list[str] = []
+        for phase_cfg in phases.values():
+            if isinstance(phase_cfg, dict):
+                sd = phase_cfg.get("seg_dir")
+                if sd and sd not in seg_dirs:
+                    seg_dirs.append(sd)
+                sd2 = phase_cfg.get("seg_dir2")
+                if sd2 and sd2 not in seg_dirs:
+                    seg_dirs.append(sd2)
+        if len(seg_dirs) >= 2:
+            seg_dir = seg_dirs  # type: ignore[assignment]
+        elif len(seg_dirs) == 1:
+            seg_dir = seg_dirs[0]
 
     dataset = DRDataset(
         manifest_csv,

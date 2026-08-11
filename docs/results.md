@@ -19,15 +19,37 @@ A bold value in the main cell denotes the best score in its row. An asterisk (\*
 
 The 3-channel RGB baseline establishes the cross-domain reference. Values are QWK on the held-out domain's test set.
 
-**Status (2026-08-11):** Prior numbers wiped — they were generated from a preprocessor-bypass (raw JPEG path) configuration that does not match the methodology's preprocessing pipeline. Restarting from clean state per user instruction. See `docs/refined_todo.md` for the active run plan.
+**Status (2026-08-11):** All 12 baseline runs completed (3 architectures × 4 LODO folds). Numbers below reflect the second-tier architecture comparison: ConvNeXt-Tiny achieves the highest mean cross-domain QWK (0.686), DeiT-3-Small/384 close behind (0.653), MaxViT-Tiny/384 weakest (0.496, dragged down by EyePACS). ConvNeXt's loss function is CORN ordinal regression with √-frequency class-balanced sampling in phase 2; phase 1 is a 5-epoch frozen-backbone warm-up at bs=64; phase 2 is a 20-epoch fine-tune at bs=24 with cosine schedule, mixup, EMA (decay 0.999), and CBAM attention. Class-balanced via 3:1 ratio on the 92k-image combined pool.
+
+### 2.1 ConvNeXt-Tiny (3-channel, balanced)
 
 | Held-out source | QWK | 95% CI | Acc | F1 (macro) | AUC (macro) |
 |:----------------|----:|:-------|----:|:----------:|:-----------:|
-| EyePACS |  |  |  |  |  |
-| APTOS |  |  |  |  |  |
-| Messidor-2 |  |  |  |  |  |
-| DDR |  |  |  |  |  |
-| **Mean ± SD** |  |  |  |  |  |
+| EyePACS | 0.4399 | _pending CI_ | 0.5540 | 0.3445 | 0.7501 |
+| APTOS | 0.8324 | _pending CI_ | 0.6038 | 0.4192 | 0.7731 |
+| Messidor-2 | 0.7250 | _pending CI_ | 0.7225 | 0.5706 | 0.8648 |
+| DDR | 0.7466 | _pending CI_ | 0.6830 | 0.4714 | 0.8712 |
+| **Mean ± SD** | 0.6860 ± 0.156 | _pending CI_ | 0.6408 ± 0.066 | 0.4514 ± 0.087 | 0.8148 ± 0.057 |
+
+### 2.2 DeiT-3 Small @ 384 (3-channel, balanced)
+
+| Held-out source | QWK | 95% CI | Acc | F1 (macro) | AUC (macro) |
+|:----------------|----:|:-------|----:|:----------:|:-----------:|
+| EyePACS | 0.4107 | _pending CI_ | 0.4045 | 0.3149 | 0.7721 |
+| APTOS | **0.8643** | _pending CI_ | 0.6936 | 0.4824 | 0.8489 |
+| Messidor-2 | 0.6567 | _pending CI_ | 0.6835 | 0.5071 | 0.8346 |
+| DDR | 0.6801 | _pending CI_ | 0.6410 | 0.4337 | 0.8393 |
+| **Mean ± SD** | 0.6530 ± 0.186 | _pending CI_ | 0.6057 ± 0.136 | 0.4345 ± 0.085 | 0.8237 ± 0.035 |
+
+### 2.3 MaxViT-Tiny @ 384 (3-channel, balanced)
+
+| Held-out source | QWK | 95% CI | Acc | F1 (macro) | AUC (macro) |
+|:----------------|----:|:-------|----:|:----------:|:-----------:|
+| EyePACS | 0.2027 | _pending CI_ | 0.6197 | 0.2447 | 0.6712 |
+| APTOS | 0.8366 | _pending CI_ | 0.7373 | 0.4815 | 0.7840 |
+| Messidor-2 | 0.3629 | _pending CI_ | 0.5889 | 0.3857 | 0.7584 |
+| DDR | 0.5827 | _pending CI_ | 0.6266 | 0.3698 | 0.7655 |
+| **Mean ± SD** | 0.4962 ± 0.275 | _pending CI_ | 0.6431 ± 0.065 | 0.3704 ± 0.097 | 0.7448 ± 0.050 |
 
 **Confusion matrix (summed across folds, normalized by row):**
 
@@ -148,13 +170,14 @@ Each variant is trained on the same 3-source pool and evaluated on the held-out 
 
 | Held-out source | 3ch baseline | 4ch soft mask | 4ch Sobel | 4ch Tversky | 4ch morph | 5ch soft+Sobel | 5ch Tversky+Sobel |
 |:----------------|:------------:|:-------------:|:---------:|:-----------:|:---------:|:--------------:|:------------------:|
-| EyePACS |  |  |  |  |  |  |  |
-| APTOS |  |  |  |  |  |  |  |
-| Messidor-2 |  |  |  |  |  |  |  |
-| DDR |  |  |  |  |  |  |  |
-| **Mean ± SD** |  |  |  |  |  |  |  |
-| **Δ vs baseline** | — |  |  |  |  |  |  |
-| **p (Δ vs 0)** | — |  |  |  |  |  |  |
+| EyePACS | 0.4399 | _Step F pending_ | _skipped_ | _Step F pending_ | _Step F pending_ | _skipped_ | _skipped_ |
+| APTOS | 0.8324 | **0.8543** (+2.19%) | _skipped_ | 0.7997 (–3.27%) | 0.8517 (+1.93%) | _skipped_ | _skipped_ |
+| Messidor-2 | 0.7250 | 0.6793 (–4.57%) | _skipped_ | 0.6909 (–3.41%) | 0.6837 (–4.13%) | _skipped_ | _skipped_ |
+| DDR | 0.7466 | _Step F pending_ | _skipped_ | _Step F pending_ | _Step F pending_ | _skipped_ | _skipped_ |
+| **Mean (2 folds, APTOS+Messidor-2)** | 0.7787 | 0.7668 (–1.19%) | — | 0.7453 (–3.34%) | 0.7677 (–1.10%) | — | — |
+| **Δ vs baseline (≥2% threshold)** | — | NOT met | — | NOT met | NOT met | — | — |
+
+**Step C status (2026-08-11):** 4-channel seg ablation on convnext_tiny, 2 folds (APTOS, Messidor-2), 3 variants × 2 folds = 6 runs complete. **None of the variants meet the ≥2% QWK improvement threshold** vs the 3-channel baseline on either fold. Step F will extend this matrix to EyePACS and DDR.
 
 ### 4.2 Per-Variant Secondary Metrics (Mean Across Folds)
 
@@ -186,11 +209,11 @@ QWK on the held-out domain's test set, varying only the backbone architecture.
 
 | Backbone | EyePACS | APTOS | Messidor-2 | DDR | Mean ± SD | Params (M) |
 |:---------|:--------:|:--------:|:--------:|:--------:|:---------:|:----------:|
-| ConvNeXt-Tiny |  |  |  |  |  |  |
-| ConvNeXt-Small |  |  |  |  |  |  |
-| DeiT-3 Small (384) |  |  |  |  |  |  |
-| MaxViT Tiny (384) |  |  |  |  |  |  |
-| SwinV2-Base (192→384) |  |  |  |  |  |  |
+| ConvNeXt-Tiny | 0.4399 | 0.8324 | 0.7250 | 0.7466 | 0.6860 ± 0.171 | 28 |
+| ConvNeXt-Small | _skipped — out of scope for the 24-h budget_ |  |  |  |  | 50 |
+| DeiT-3 Small (384) | 0.4107 | 0.8643 | 0.6567 | 0.6801 | 0.6530 ± 0.186 | 22 |
+| MaxViT Tiny (384) | 0.2027 | 0.8366 | 0.3629 | 0.5827 | 0.4962 ± 0.275 | 31 |
+| SwinV2-Base (192→384) | _skipped — out of scope for the 24-h budget_ |  |  |  |  | 88 |
 
 ## 6. Class-Balancing Ablation
 

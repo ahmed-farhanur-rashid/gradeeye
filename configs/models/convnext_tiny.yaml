@@ -1,43 +1,43 @@
 arch: convnext_tiny
 checkpoint_dir: saved/checkpoints
-log_dir: saved/logs
 ema_decay: 0.999
+log_dir: saved/logs
 loss_type: corn
-use_class_weighting: true
-use_mixup: true
 model:
   arch: convnext_tiny
+  cbam_num_stages: 2
+  channels_last: true
+  dropout: 0.4
+  head_hidden_dim: 512
+  img_size: 384
+  in_chans: 3
+  num_thresholds: 4
   pretrained: true
   use_cbam: true
-  cbam_num_stages: 2
-  num_thresholds: 4
-  head_hidden_dim: 512
-  dropout: 0.4
-  channels_last: true
-  in_chans: 3
-  img_size: 384
 phases:
   phase1_frozen:
-    freeze_backbone: true
     aug_strength: light
     batch_size: 64
-    num_epochs: 5
+    freeze_backbone: true
     head_lr: 0.001
-    warmup_epochs: 1
-    scheduler: cosine
     img_size: 384
+    num_epochs: 5
+    scheduler: cosine
     use_sqrt_sampler: false
+    warmup_epochs: 1
   phase2_full_training:
-    freeze_backbone: false
     aug_strength: light
-    batch_size: 24
-    num_epochs: 20
-    head_lr: 0.000122
     backbone_lr: 1.22e-05
-    weight_decay: 0.01
-    warmup_epochs: 2
-    scheduler: cosine
-    min_epochs: 8
-    overfitting_patience: 5
+    batch_size: 24
+    freeze_backbone: false
+    head_lr: 0.000122
     img_size: 384
+    min_epochs: 8
+    num_epochs: 20
+    overfitting_patience: 5
+    scheduler: cosine
     use_sqrt_sampler: true
+    warmup_epochs: 2
+    weight_decay: 0.01
+use_class_weighting: true
+use_mixup: true

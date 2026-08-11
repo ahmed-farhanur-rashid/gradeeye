@@ -1,0 +1,15 @@
+[2026-08-11 02:24:55] === pipeline started ===
+[2026-08-11 02:24:55] starting Step C (seg ablation: 6 runs)
+[2026-08-11 02:27:50] Step C FAILED rc=1 — aborting pipeline
+[2026-08-11 02:50:42] === pipeline started ===
+[2026-08-11 02:50:42] starting Step C (seg ablation: 6 runs)
+[2026-08-11 05:23:09] Step C complete
+[2026-08-11 05:23:09] starting Step B (3-channel baseline: 12 runs)
+[2026-08-11 12:57:37] Step B complete
+[2026-08-11 12:57:37] === pipeline complete (Steps B+C). Await command for Step D. ===
+[2026-08-11 13:00:56] === pipeline_v3 started ===
+[2026-08-11 13:00:56] starting Step C (seg ablation: 6 runs)
+[2026-08-11 13:00:56] Step C complete
+[2026-08-11 13:00:56] starting Step B (3-channel baseline: 12 runs)
+[2026-08-11 13:00:56] Step B complete
+[2026-08-11 13:00:56] starting Step F (4ch ablation eyepacs+ddr: 6 runs)

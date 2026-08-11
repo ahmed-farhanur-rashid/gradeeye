@@ -12,7 +12,7 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-VENV_PYTHON="/home/farhan/my-projects/.venv/bin/python"
+VENV_PYTHON="bash $(dirname "$0")/_pvrun.sh"
 
 # Detect form: model + LODO config, or one legacy monolithic config.
 if [ $# -ge 2 ] && [[ "$1" == configs/models/*.yaml ]] && [[ "$2" == configs/*/*.yaml ]]; then

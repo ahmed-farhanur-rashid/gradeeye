@@ -100,13 +100,17 @@ Margin: ~7.5 hours for retries, debugging, or extending Step C to 4 folds or 4 a
 
 ## Verdict logic
 
-After Step C completes, the decision matrix:
+After Step C completes, the decision matrix (improvement threshold raised to ≥2% QWK per user direction on 2026-08-11 — seg masks are unlikely to deliver that):
 
-1. **No aux variant beats 3ch baseline by ≥1% QWK on either fold:** Seg is useless. The paper becomes a calibration finding on the 3-channel balanced baseline across 3 architectures.
-2. **One aux variant beats 3ch by ≥1% on both folds:** That variant is the winner. We can extend Step C to 4 folds or 4 architectures if time permits.
+1. **No aux variant beats 3ch baseline by ≥2% QWK on either fold:** Seg is useless. The paper becomes a calibration finding on the 3-channel balanced baseline across 3 architectures, with aux-channel QWK deferred to a follow-up.
+2. **One aux variant beats 3ch by ≥2% on both folds:** That variant is the winner. We can extend Step C to 4 folds or 4 architectures if time permits.
 3. **Mixed signal (one variant wins on aptos, another on m2):** Use the average winner. Document fold-specific variance.
 
 In all cases, the per-threshold calibration diagnostic (Step D) is the primary contribution; aux-channel QWK is the secondary question.
+
+## Execution script
+
+`bash scripts/run_pipeline_v2.sh` runs Step C then Step B sequentially. Status updates land in `saved/logs/_STATUS.txt` after each step boundary. Step D requires manual launch.
 
 ---
 
