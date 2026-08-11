@@ -81,6 +81,11 @@ saved/checkpoints/
 *.onnx
 *.pb
 
+# Hugging Face upload staging tree (transient; canonical weights live on
+# the Hub at gradeeye/<repo>). Regenerated locally by
+# scripts/hf_upload/convert_to_safetensors.py if needed.
+staging/
+
 # Logs & Telemetry
 *.log
 runs/
