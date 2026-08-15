@@ -212,19 +212,19 @@ The key finding is that \emph{both calibration procedures make things worse}. Me
 
 The per-threshold ECE \emph{without any calibration} (Table~\ref{tab:raw-ece}) is non-uniform across thresholds and folds: ECE$_4$ (Proliferative) is the highest on three of four folds (EyePACS: $0.27$, APTOS: $0.23$, Messidor-2: $0.35$, DDR: $0.29$). The Mild-class threshold (ECE$_1$) is highest on EyePACS ($0.30$), where the Mild-class prevalence is the lowest ($0.07$). The per-threshold range (max ECE$_t$ $-$ min ECE$_t$) is $0.05$ on APTOS and $0.29$ on Messidor-2 --- a sixfold spread. The aggregate ECE (mean of the four per-threshold ECEs) is $0.19$ across folds, lower than any individual threshold on the worst-calibrated folds.
 
-A visual confirmation of the systematic miscalibration is shown in Figures~\ref{fig:reliability-eyepacs}---\ref{fig:reliability-ddr}. Across all four folds and all four thresholds, the empirical frequency lies below the diagonal $y = x$: the model's predicted probabilities are systematically \emph{underconfident} --- in the highest bin the empirical frequency plateaus at $0.6$--$0.7$ even when the predicted probability is $1.0$. The standard temperature-scaling remedy (apply $T > 1$ to soften an overconfident model) is the wrong direction of fit; the optimizer has to push $T \to \infty$ to recover the validation-set ECE, and the calibration transfer breaks because the validation and test distributions differ.
+A visual confirmation of the systematic miscalibration is shown in Figures~\ref{fig:reliability-eyepacs}---\ref{fig:reliability-ddr}. Across all four folds and all four thresholds, the empirical frequency lies below the diagonal $y = x$: the model's predicted probabilities are systematically \emph{overconfident} --- in the highest bin the empirical frequency plateaus at $0.6$--$0.7$ even when the predicted probability is $1.0$. The standard temperature-scaling remedy (apply $T > 1$ to soften an overconfident model) should work, but it doesn't: the fitted global temperature saturates at the upper bound ($T = 5.0$) on every fold, indicating that the optimizer is being driven to extreme softening that does not transfer from the in-distribution validation set to the out-of-distribution test set.
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width=0.95\linewidth]{figures/calibration/reliability_EyePACS.png}
-\caption{EyePACS reliability diagrams (no calibration, held-out test). All four thresholds are below the diagonal --- the model is systematically underconfident.}
+\caption{EyePACS reliability diagrams (no calibration, held-out test). All four thresholds are below the diagonal --- the model is systematically overconfident.}
 \label{fig:reliability-eyepacs}
 \end{figure}
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width=0.95\linewidth]{figures/calibration/reliability_APTOS.png}
-\caption{APTOS reliability diagrams. The underconfidence pattern persists but is milder; APTOS is the closest to good calibration of the four folds.}
+\caption{APTOS reliability diagrams. The overconfidence pattern persists but is milder; APTOS is the closest to good calibration of the four folds.}
 \label{fig:reliability-aptos}
 \end{figure}
 
